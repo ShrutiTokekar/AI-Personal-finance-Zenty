@@ -24,11 +24,7 @@ app = FastAPI(title="AI Finance Assistant API", version="1.0.0")
 # CORS middleware - MUST BE BEFORE ROUTES
 app.add_middleware(
     CORSMiddleware,
-    allow_origins= [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "*"
-    ],  # Allow all origins for now
+    allow_origins= ["*"],  # Allow all origins for now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
