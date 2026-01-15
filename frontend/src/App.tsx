@@ -3,12 +3,12 @@ import { useState } from 'react';
 import { 
   LayoutDashboard, 
   Receipt, 
-  ChartNoAxesCombined, 
+  TrendingUp, 
   Wallet, 
   Settings,
   BadgeDollarSign, 
   PiggyBank, 
-  BotMessageSquare
+  MessageSquare
 } from 'lucide-react';
 import Dashboard from './components/Dashboard/Dashbord';
 import ChatInterface from './components/Chat/ChatInterface';
@@ -25,9 +25,9 @@ function App() {
 
   const navigation = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
-    { id: 'chat', name: 'AI Assistant', icon: BotMessageSquare },
+    { id: 'chat', name: 'AI Assistant', icon: MessageSquare },
     { id: 'transactions', name: 'Transactions', icon: Receipt },
-    { id: 'analytics', name: 'Analytics', icon: ChartNoAxesCombined },
+    { id: 'analytics', name: 'Analytics', icon: TrendingUp },
     { id: 'savings', name: 'Savings', icon: PiggyBank },
     { id: 'budget', name: 'Budget', icon: Wallet },
     { id: 'stocks', name: 'Stocks', icon: BadgeDollarSign },
