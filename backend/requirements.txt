@@ -18,7 +18,7 @@ scikit-learn==1.8.0
 scipy==1.17.0
 
 # PyTorch - For Deep Learning
-torch==2.9.1
+torch==2.5.1
 torchvision==0.20.1
 
 # Transformers - For NLP Models
