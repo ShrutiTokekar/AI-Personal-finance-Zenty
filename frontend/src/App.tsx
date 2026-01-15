@@ -1,6 +1,15 @@
 // frontend/src/App.tsx
 import { useState } from 'react';
-import { LayoutDashboard, Receipt, ChartNoAxesCombined, Wallet, Settings,BadgeDollarSign, PiggyBank , BotMessageSquare  } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Receipt, 
+  ChartNoAxesCombined, 
+  Wallet, 
+  Settings,
+  BadgeDollarSign, 
+  PiggyBank, 
+  BotMessageSquare
+} from 'lucide-react';
 import Dashboard from './components/Dashboard/Dashbord';
 import ChatInterface from './components/Chat/ChatInterface';
 import TransactionsList from './components/Transactions/TransactionList';
