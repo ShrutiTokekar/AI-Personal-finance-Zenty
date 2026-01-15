@@ -1,16 +1,14 @@
-# render.yaml (in project root)
+# render.yaml
 
 services:
   - type: web
-    name: finance-backend
-    env: python
-    region: oregon
+    name: zenty-finance-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./
     plan: free
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn src.api.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120
+    region: oregon
     healthCheckPath: /health
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: WEB_CONCURRENCY
-        value: 1
+      - key: PORT
+        value: 8000
