@@ -1,43 +1,179 @@
 # backend/src/api/main.py
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
-from typing import List, Optional
-import sys
 import os
+import sys
+import threading
 import traceback
+from typing import Optional, List
+from datetime import datetime
+
+print("=" * 60)
+print("🚀 STARTING AI FINANCE API")
+print("=" * 60)
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from src.services.stock_service import StockService
-from src.nlp.query_processor import QueryProcessor
-from src.database.db_manager import DatabaseManager
-from src.ml.spending_predictor import SpendingPredictor
-from src.ml.anomaly_detector import AnomalyDetector
-from src.assistant.financial_advisor import FinancialAdvisor
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 app = FastAPI(title="AI Finance Assistant API", version="1.0.0")
 
 # CORS middleware - MUST BE BEFORE ROUTES
 app.add_middleware(
     CORSMiddleware,
-    allow_origins= ["*"],  # Allow all origins for now
+    allow_origins=["*"],  # Allow all origins for now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize services
-print("Initializing services...")
+print("✅ FastAPI app created with CORS")
+
+# Initialize ONLY lightweight services immediately
+from src.database.db_manager import DatabaseManager
 db = DatabaseManager()
-query_processor = QueryProcessor()
-predictor = SpendingPredictor()
-anomaly_detector = AnomalyDetector()
-advisor = FinancialAdvisor()
-print("Services initialized successfully!")
+print("✅ Database initialized")
+
+# Heavy ML services - initialize as None (lazy loading)
+query_processor = None
+predictor = None
+anomaly_detector = None
+advisor = None
+stock_service = None
+
+# ML loading state
+ml_loading = False
+ml_loaded = False
+
+def load_ml_models():
+    """Load ML models in background after server starts"""
+    global query_processor, predictor, anomaly_detector, advisor, stock_service
+    global ml_loading, ml_loaded
+    
+    if ml_loading or ml_loaded:
+        return
+    
+    ml_loading = True
+    print("📚 Loading ML models in background (this takes 30-60 seconds)...")
+    
+    try:
+        print("  → Loading Query Processor...")
+        from src.nlp.query_processor import QueryProcessor
+        query_processor = QueryProcessor()
+        print("  ✓ Query Processor ready")
+        
+        print("  → Loading Stock Service...")
+        from src.services.stock_service import StockService
+        stock_service = StockService
+        print("  ✓ Stock Service ready")
+        
+        print("  → Loading Spending Predictor...")
+        from src.ml.spending_predictor import SpendingPredictor
+        predictor = SpendingPredictor()
+        print("  ✓ Spending Predictor ready")
+        
+        print("  → Loading Anomaly Detector...")
+        from src.ml.anomaly_detector import AnomalyDetector
+        anomaly_detector = AnomalyDetector()
+        print("  ✓ Anomaly Detector ready")
+        
+        print("  → Loading Financial Advisor...")
+        from src.assistant.financial_advisor import FinancialAdvisor
+        advisor = FinancialAdvisor()
+        print("  ✓ Financial Advisor ready")
+        
+        ml_loaded = True
+        print("✅ All ML models loaded successfully!")
+        
+    except Exception as e:
+        print(f"⚠️ ML loading error: {e}")
+        traceback.print_exc()
+    finally:
+        ml_loading = False
+
+@app.on_event("startup")
+async def startup_event():
+    """Start ML loading in background after server starts"""
+    print("🎬 Server started! Loading ML models in background...")
+    thread = threading.Thread(target=load_ml_models, daemon=True)
+    thread.start()
+
+# Helper functions for lazy loading
+def get_query_processor():
+    """Get query processor (waits if still loading)"""
+    if ml_loaded and query_processor:
+        return query_processor
+    
+    if ml_loading:
+        # Still loading, wait a bit
+        import time
+        for _ in range(30):
+            time.sleep(1)
+            if ml_loaded:
+                return query_processor
+    
+    # If not loading yet, trigger it
+    if not ml_loading:
+        load_ml_models()
+    
+    return query_processor
+
+def get_predictor():
+    """Get predictor (waits if still loading)"""
+    if ml_loaded and predictor:
+        return predictor
+    
+    if ml_loading:
+        import time
+        for _ in range(30):
+            time.sleep(1)
+            if ml_loaded:
+                return predictor
+    
+    if not ml_loading:
+        load_ml_models()
+    
+    return predictor
+
+def get_anomaly_detector():
+    """Get anomaly detector (waits if still loading)"""
+    if ml_loaded and anomaly_detector:
+        return anomaly_detector
+    
+    if ml_loading:
+        import time
+        for _ in range(30):
+            time.sleep(1)
+            if ml_loaded:
+                return anomaly_detector
+    
+    if not ml_loading:
+        load_ml_models()
+    
+    return anomaly_detector
+
+def get_advisor():
+    """Get financial advisor (waits if still loading)"""
+    if ml_loaded and advisor:
+        return advisor
+    
+    if ml_loading:
+        import time
+        for _ in range(30):
+            time.sleep(1)
+            if ml_loaded:
+                return advisor
+    
+    if not ml_loading:
+        load_ml_models()
+    
+    return advisor
+
+print("=" * 60)
+print("✅ SERVER READY - ML will load in background")
+print(f"   Port: {os.getenv('PORT', 'NOT SET')}")
+print("=" * 60)
 
 # Pydantic models
 class TransactionCreate(BaseModel):
@@ -72,19 +208,26 @@ class StockCreate(BaseModel):
     purchase_date: Optional[str] = None
     notes: Optional[str] = None
 
-# Routes
+# Fast endpoints (no ML needed)
 @app.get("/")
 async def root():
     return {
-        "message": "AI Finance Assistant API", 
+        "message": "AI Finance Assistant API",
         "status": "running",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "ml_status": "loaded" if ml_loaded else "loading..." if ml_loading else "waiting",
+        "port": os.getenv("PORT", "unknown")
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "ml_loaded": ml_loaded,
+        "ml_loading": ml_loading
+    }
 
+# Transaction routes (no ML needed)
 @app.post("/api/transactions")
 async def create_transaction(transaction: TransactionCreate):
     """Add a new transaction"""
@@ -93,57 +236,48 @@ async def create_transaction(transaction: TransactionCreate):
         print("Received transaction request:")
         print(f"Raw data: {transaction.dict()}")
         
-        # Convert transaction to dict
         transaction_data = transaction.dict()
         
         # Handle date conversion
         if transaction_data.get('date'):
             try:
                 date_str = transaction_data['date']
-                print(f"Parsing date: {date_str}")
-                
                 if 'T' in date_str:
                     transaction_data['date'] = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 else:
                     transaction_data['date'] = datetime.strptime(date_str, '%Y-%m-%d')
-                
-                print(f"Parsed date: {transaction_data['date']}")
             except Exception as date_error:
                 print(f"Date parsing error: {date_error}")
                 transaction_data['date'] = datetime.now()
         else:
             transaction_data['date'] = datetime.now()
         
-        print(f"Processed transaction data: {transaction_data}")
-        
         # Add to database
         result = db.add_transaction(transaction_data)
         print(f"Transaction added successfully: {result}")
         
-        # Check for anomalies (don't let this fail the transaction)
+        # Check for anomalies (lazy load if needed)
         is_anomaly = False
-        try:
-            is_anomaly = anomaly_detector.detect_anomaly(transaction_data)
-            print(f"Anomaly detection result: {is_anomaly}")
-        except Exception as anomaly_error:
-            print(f"Anomaly detection error (non-critical): {anomaly_error}")
+        if ml_loaded:
+            try:
+                detector = get_anomaly_detector()
+                if detector:
+                    is_anomaly = detector.detect_anomaly(transaction_data)
+            except Exception as anomaly_error:
+                print(f"Anomaly detection error (non-critical): {anomaly_error}")
         
         response = {
             "success": True,
             "transaction": result,
             "anomaly_detected": is_anomaly
         }
-        print(f"Sending response: {response}")
         print("=" * 50)
         
         return response
         
     except Exception as e:
-        print("=" * 50)
         print(f"ERROR adding transaction: {str(e)}")
-        print(f"Error type: {type(e).__name__}")
         traceback.print_exc()
-        print("=" * 50)
         raise HTTPException(status_code=400, detail=f"Failed to add transaction: {str(e)}")
 
 @app.get("/api/transactions")
@@ -154,156 +288,121 @@ async def get_transactions(
 ):
     """Get transactions with optional filters"""
     try:
-        print(f"Fetching transactions - limit: {limit}, category: {category}, start_date: {start_date}")
         transactions = db.get_transactions(limit, category, start_date)
-        print(f"Retrieved {len(transactions)} transactions")
         return {"transactions": transactions}
     except Exception as e:
-        print(f"Error fetching transactions: {str(e)}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/transactions/{transaction_id}")
 async def delete_transaction(transaction_id: int):
     """Delete a transaction"""
     try:
-        print(f"Deleting transaction ID: {transaction_id}")
         result = db.delete_transaction(transaction_id)
         if result:
-            print(f"Transaction {transaction_id} deleted successfully")
             return {"success": True, "message": "Transaction deleted"}
-        print(f"Transaction {transaction_id} not found")
         raise HTTPException(status_code=404, detail="Transaction not found")
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error deleting transaction: {str(e)}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/analytics/summary")
 async def get_summary():
     """Get financial summary statistics"""
     try:
-        print("Fetching financial summary...")
         summary = db.get_monthly_summary()
-        print(f"Summary: {summary}")
         return summary
     except Exception as e:
-        print(f"Error fetching summary: {str(e)}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/analytics/trends")
 async def get_trends():
     """Get spending trends over time"""
     try:
-        print("Fetching spending trends...")
         trends = db.get_spending_trends()
-        print(f"Retrieved {len(trends)} trend data points")
         return {"trends": trends}
     except Exception as e:
-        print(f"Error fetching trends: {str(e)}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/analytics/category-breakdown")
 async def get_category_breakdown():
     """Get spending breakdown by category"""
     try:
-        print("Fetching category breakdown...")
         breakdown = db.get_category_breakdown()
-        print(f"Retrieved breakdown for {len(breakdown)} categories")
         return {"breakdown": breakdown}
     except Exception as e:
-        print(f"Error fetching category breakdown: {str(e)}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+# ML-powered routes (lazy load)
 @app.get("/api/predict/next-month")
 async def predict_next_month():
     """Predict spending for next month"""
     try:
-        print("Generating spending predictions...")
+        pred = get_predictor()
+        if not pred:
+            return {
+                "error": "ML models are still loading. Please try again in a moment.",
+                "predictions": {}
+            }
+        
         transactions_df = db.get_transactions_df()
         
         if len(transactions_df) < 30:
-            print(f"Insufficient data: only {len(transactions_df)} transactions")
             return {
                 "error": "Need at least 30 transactions for accurate predictions",
                 "predictions": {}
             }
         
-        print(f"Training predictor with {len(transactions_df)} transactions")
-        trained = predictor.train(transactions_df)
+        trained = pred.train(transactions_df)
         
         if not trained:
-            print("Predictor training failed")
             return {
                 "error": "Insufficient data for training",
                 "predictions": {}
             }
         
-        predictions = predictor.predict_next_month_all_categories()
-        print(f"Generated predictions for {len(predictions)} categories")
-        
+        predictions = pred.predict_next_month_all_categories()
         return {"predictions": predictions}
     except Exception as e:
-        print(f"Error in predictions: {str(e)}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/budget")
-async def get_budgets():
-    """Get all budget limits"""
-    try:
-        print("Fetching budgets...")
-        budgets = db.get_budgets()
-        print(f"Retrieved {len(budgets)} budgets")
-        return {"budgets": budgets}
-    except Exception as e:
-        print(f"Error fetching budgets: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/budget")
-async def create_budget(budget: BudgetCreate):
-    """Create or update budget limit"""
-    try:
-        print(f"Creating/updating budget: {budget.dict()}")
-        result = db.set_budget(budget.category, budget.monthly_limit)
-        print(f"Budget saved: {result}")
-        return {"success": True, "budget": result}
-    except Exception as e:
-        print(f"Error creating budget: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/chat")
 async def chat(message: ChatMessage):
     """Process natural language query"""
     try:
-        print(f"Processing chat message: {message.message}")
-        response = query_processor.process(message.message)
-        print(f"Chat response: {response}")
+        processor = get_query_processor()
+        
+        if not processor:
+            return {
+                'type': 'text',
+                'message': '⏳ AI models are still loading (takes ~1 minute on first start). Please try again in a moment!'
+            }
+        
+        response = processor.process(message.message)
         return response
     except Exception as e:
-        print(f"Chat error: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            'type': 'text',
+            'message': f'Sorry, I encountered an error: {str(e)}'
+        }
 
 @app.get("/api/advice")
 async def get_advice():
     """Get AI-powered financial advice"""
     try:
-        print("Generating financial advice...")
+        adv = get_advisor()
+        
+        if not adv:
+            return {
+                "advice": "AI advisor is still loading. Please try again in a moment."
+            }
+        
         user_data = db.get_user_financial_data()
-        print(f"User data: {user_data}")
-        advice = advisor.get_personalized_advice(user_data)
-        print(f"Advice generated: {advice[:100]}...")
+        advice = adv.get_personalized_advice(user_data)
         return {"advice": advice}
     except Exception as e:
-        print(f"Error generating advice: {str(e)}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -311,191 +410,49 @@ async def get_advice():
 async def detect_anomalies():
     """Detect unusual transactions"""
     try:
-        print("Detecting anomalies...")
+        detector = get_anomaly_detector()
+        
+        if not detector:
+            return {
+                "anomalies": [],
+                "message": "Anomaly detector is still loading. Please try again in a moment."
+            }
+        
         transactions_df = db.get_transactions_df()
         
         if len(transactions_df) < 50:
-            print(f"Insufficient data for anomaly detection: {len(transactions_df)} transactions")
             return {"anomalies": [], "message": "Need at least 50 transactions"}
         
-        print(f"Training anomaly detector with {len(transactions_df)} transactions")
-        trained = anomaly_detector.train(transactions_df)
+        trained = detector.train(transactions_df)
         
         if not trained:
-            print("Anomaly detector training failed")
             return {"anomalies": [], "message": "Insufficient data for training"}
         
-        anomalies = anomaly_detector.get_unusual_transactions(transactions_df)
-        print(f"Detected {len(anomalies)} anomalies")
+        anomalies = detector.get_unusual_transactions(transactions_df)
         
         return {"anomalies": anomalies.to_dict('records') if len(anomalies) > 0 else []}
     except Exception as e:
-        print(f"Error detecting anomalies: {str(e)}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-# =========== SAVINGS GOALS ROUTES ============
-
-@app.get("/api/savings/goals")
-async def get_savings_goals(include_completed: bool = False):
-    """Get all savings goals"""
+# Budget routes
+@app.get("/api/budget")
+async def get_budgets_old():
+    """Get all budget limits (old endpoint)"""
     try:
-        goals = db.get_savings_goals(include_completed)
-        return {"goals": goals}
+        budgets = db.get_budgets()
+        return {"budgets": budgets}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/savings/goals")
-async def create_savings_goal(goal: SavingsGoalCreate):
-    """Create a new savings goal"""
+@app.post("/api/budget")
+async def create_budget_old(budget: BudgetCreate):
+    """Create or update budget limit (old endpoint)"""
     try:
-        from datetime import datetime
-        deadline = None
-        if goal.deadline:
-            deadline = datetime.fromisoformat(goal.deadline.replace('Z', '+00:00'))
-        
-        result = db.create_savings_goal(
-            name=goal.name,
-            target_amount=goal.target_amount,
-            deadline=deadline,
-            description=goal.description
-        )
-        return {"success": True, "goal": result}
+        result = db.set_budget(budget.category, budget.monthly_limit)
+        return {"success": True, "budget": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/api/savings/goals/{goal_id}/contribute")
-async def contribute_to_goal(goal_id: int, contribution: SavingsContribution):
-    """Add money to a savings goal"""
-    try:
-        result = db.add_to_savings_goal(goal_id, contribution.amount, contribution.description)
-        return {"success": True, "goal": result}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get("/api/savings/goals/{goal_id}/transactions")
-async def get_goal_transactions(goal_id: int):
-    """Get all transactions for a savings goal"""
-    try:
-        transactions = db.get_savings_transactions(goal_id)
-        return {"transactions": transactions}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/savings/goals/{goal_id}")
-async def delete_savings_goal(goal_id: int):
-    """Delete a savings goal"""
-    try:
-        result = db.delete_savings_goal(goal_id)
-        if result:
-            return {"success": True, "message": "Goal deleted"}
-        raise HTTPException(status_code=404, detail="Goal not found")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ============ STOCK PORTFOLIO ROUTES ============
-
-@app.get("/api/stocks")
-async def get_stocks():
-    """Get all stock holdings"""
-    try:
-        stocks = db.get_stocks()
-        return {"stocks": stocks}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/stocks")
-async def add_stock(stock: StockCreate):
-    """Add a stock holding"""
-    try:
-        from datetime import datetime
-        purchase_date = None
-        if stock.purchase_date:
-            purchase_date = datetime.fromisoformat(stock.purchase_date.replace('Z', '+00:00'))
-        
-        result = db.add_stock(
-            symbol=stock.symbol,
-            shares=stock.shares,
-            purchase_price=stock.purchase_price,
-            name=stock.name,
-            purchase_date=purchase_date,
-            notes=stock.notes
-        )
-        return {"success": True, "stock": result}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.delete("/api/stocks/{stock_id}")
-async def delete_stock(stock_id: int):
-    """Delete a stock holding"""
-    try:
-        result = db.delete_stock(stock_id)
-        if result:
-            return {"success": True, "message": "Stock deleted"}
-        raise HTTPException(status_code=404, detail="Stock not found")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/stocks/portfolio")
-async def get_portfolio():
-    """Get portfolio summary"""
-    try:
-        summary = db.get_portfolio_summary()
-        return summary
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/stocks/validate/{symbol}")
-async def validate_stock_symbol(symbol: str):
-    """Validate if a stock symbol exists"""
-    try:
-        symbol = symbol.upper()
-        print(f"API: Validating symbol {symbol}")  # Debug log
-        
-        is_valid = StockService.validate_symbol(symbol)
-        
-        return {
-            "symbol": symbol, 
-            "valid": is_valid,
-            "message": "Valid symbol" if is_valid else "Invalid or unknown symbol"
-        }
-    except Exception as e:
-        print(f"API validation error: {str(e)}")  # Debug log
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error validating symbol: {str(e)}"
-        )
-    
-@app.get("/api/stocks/price/{symbol}")
-async def get_stock_price(symbol: str):
-    """Get current price for a stock"""
-    try:
-        symbol = symbol.upper()
-        print(f"API: Fetching price for {symbol}")  # Debug log
-        
-        stock_info = StockService.get_stock_info(symbol)
-        
-        if not stock_info:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Stock symbol '{symbol}' not found or no price data available"
-            )
-        
-        return stock_info
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"API price fetch error: {str(e)}")  # Debug log
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error fetching stock price: {str(e)}"
-        )
-    
-# backend/src/api/main.py - ADD these routes
 
 @app.get("/api/budgets")
 async def get_budgets():
@@ -558,6 +515,159 @@ async def get_budget_summary():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Savings Goals routes
+@app.get("/api/savings/goals")
+async def get_savings_goals(include_completed: bool = False):
+    """Get all savings goals"""
+    try:
+        goals = db.get_savings_goals(include_completed)
+        return {"goals": goals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/savings/goals")
+async def create_savings_goal(goal: SavingsGoalCreate):
+    """Create a new savings goal"""
+    try:
+        deadline = None
+        if goal.deadline:
+            deadline = datetime.fromisoformat(goal.deadline.replace('Z', '+00:00'))
+        
+        result = db.create_savings_goal(
+            name=goal.name,
+            target_amount=goal.target_amount,
+            deadline=deadline,
+            description=goal.description
+        )
+        return {"success": True, "goal": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/savings/goals/{goal_id}/contribute")
+async def contribute_to_goal(goal_id: int, contribution: SavingsContribution):
+    """Add money to a savings goal"""
+    try:
+        result = db.add_to_savings_goal(goal_id, contribution.amount, contribution.description)
+        return {"success": True, "goal": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/savings/goals/{goal_id}/transactions")
+async def get_goal_transactions(goal_id: int):
+    """Get all transactions for a savings goal"""
+    try:
+        transactions = db.get_savings_transactions(goal_id)
+        return {"transactions": transactions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/savings/goals/{goal_id}")
+async def delete_savings_goal(goal_id: int):
+    """Delete a savings goal"""
+    try:
+        result = db.delete_savings_goal(goal_id)
+        if result:
+            return {"success": True, "message": "Goal deleted"}
+        raise HTTPException(status_code=404, detail="Goal not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Stock routes (lazy load for validation)
+@app.get("/api/stocks")
+async def get_stocks():
+    """Get all stock holdings"""
+    try:
+        stocks = db.get_stocks()
+        return {"stocks": stocks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stocks")
+async def add_stock(stock: StockCreate):
+    """Add a stock holding"""
+    try:
+        purchase_date = None
+        if stock.purchase_date:
+            purchase_date = datetime.fromisoformat(stock.purchase_date.replace('Z', '+00:00'))
+        
+        result = db.add_stock(
+            symbol=stock.symbol,
+            shares=stock.shares,
+            purchase_price=stock.purchase_price,
+            name=stock.name,
+            purchase_date=purchase_date,
+            notes=stock.notes
+        )
+        return {"success": True, "stock": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/stocks/{stock_id}")
+async def delete_stock(stock_id: int):
+    """Delete a stock holding"""
+    try:
+        result = db.delete_stock(stock_id)
+        if result:
+            return {"success": True, "message": "Stock deleted"}
+        raise HTTPException(status_code=404, detail="Stock not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stocks/portfolio")
+async def get_portfolio():
+    """Get portfolio summary"""
+    try:
+        summary = db.get_portfolio_summary()
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stocks/validate/{symbol}")
+async def validate_stock_symbol(symbol: str):
+    """Validate if a stock symbol exists"""
+    try:
+        symbol = symbol.upper()
+        
+        # Stock service loaded on-demand
+        from src.services.stock_service import StockService
+        is_valid = StockService.validate_symbol(symbol)
+        
+        return {
+            "symbol": symbol,
+            "valid": is_valid,
+            "message": "Valid symbol" if is_valid else "Invalid or unknown symbol"
+        }
+    except Exception as e:
+        print(f"API validation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error validating symbol: {str(e)}")
+
+@app.get("/api/stocks/price/{symbol}")
+async def get_stock_price(symbol: str):
+    """Get current price for a stock"""
+    try:
+        symbol = symbol.upper()
+        
+        # Stock service loaded on-demand
+        from src.services.stock_service import StockService
+        stock_info = StockService.get_stock_info(symbol)
+        
+        if not stock_info:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Stock symbol '{symbol}' not found or no price data available"
+            )
+        
+        return stock_info
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"API price fetch error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching stock price: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
