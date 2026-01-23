@@ -1,4 +1,4 @@
-# backend/src/nlp/query_processor.py
+#backend/src/nlp/query_processor.py
 from .intent_classifier import IntentClassifier
 from .entity_extractor import EntityExtractor
 from ..database.db_manager import DatabaseManager
@@ -65,7 +65,10 @@ class QueryProcessor:
                 print(f"Override: Detected income keywords")
 
         # Check for budget-related queries
-        if any(word in user_lower for word in ['budget plan', 'create budget', 'recommend budget', 'budget recommendation']):
+        if any(word in user_lower for word in ['show budget', 'view budget', 'my budget', 'budget status', 'budgets']):
+            intent = 'view_budgets'
+            print(f"Override: Detected view budgets")
+        elif any(word in user_lower for word in ['budget plan', 'create budget', 'recommend budget', 'budget recommendation']):
             intent = 'budget_plan'
             print(f"Override: Detected budget planning")
         
@@ -81,6 +84,8 @@ class QueryProcessor:
                 return self.handle_check_balance()
             elif intent == 'set_budget':
                 return self.handle_set_budget(entities)
+            elif intent == 'view_budgets':
+                return self.handle_view_budgets()
             elif intent == 'budget_plan':
                 return self.handle_budget_plan()
             elif intent == 'predict_spending':
@@ -335,6 +340,54 @@ Savings Rate: {summary['savings_rate']:.1f}%"""
             return {
                 'type': 'text',
                 'message': f"Sorry, I couldn't set that budget. Error: {str(e)}"
+            }
+    
+    def handle_view_budgets(self):
+        """View all budgets and their status"""
+        try:
+            budgets = self.db.get_budgets()
+            
+            if not budgets or len(budgets) == 0:
+                return {
+                    'type': 'text',
+                    'message': "You don't have any budgets set yet!\n\nCreate budgets by saying:\n• 'Set my groceries budget to $300'\n• 'Budget $500 for rent'\n• Or use the Budget page to create them visually"
+                }
+            
+            message = "💰 Your Budget Status:\n\n"
+            
+            total_budget = 0
+            total_spent = 0
+            
+            for budget in budgets:
+                percent_used = (budget['current_spent'] / budget['monthly_limit'] * 100) if budget['monthly_limit'] > 0 else 0
+                progress_bar = self._create_progress_bar(min(percent_used, 100))
+                
+                status_emoji = "✅" if percent_used < 75 else "⚠️" if percent_used < 100 else "🚨"
+                
+                message += f"{status_emoji} {budget['category'].capitalize()}\n"
+                message += f"   Budget: ${budget['monthly_limit']:.2f}\n"
+                message += f"   Spent: ${budget['current_spent']:.2f}\n"
+                message += f"   {progress_bar} {percent_used:.1f}%\n"
+                message += f"   Remaining: ${budget['remaining']:.2f}\n\n"
+                
+                total_budget += budget['monthly_limit']
+                total_spent += budget['current_spent']
+            
+            message += f"📊 Total Budget: ${total_budget:.2f}\n"
+            message += f"💸 Total Spent: ${total_spent:.2f}\n"
+            message += f"💵 Total Remaining: ${total_budget - total_spent:.2f}\n"
+            
+            return {
+                'type': 'text',
+                'message': message
+            }
+        except Exception as e:
+            print(f"Error viewing budgets: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'type': 'text',
+                'message': "I couldn't retrieve your budgets. Please try again."
             }
     
     def handle_budget_plan(self):
