@@ -6,19 +6,15 @@ import {
   TrendingUp, TrendingDown, PieChart, CheckCircle 
 } from 'lucide-react';
 import { budgetAPI, Budget, BudgetSummary } from '../../services/api';
+import CreateBudgetModal from './CreateBudgetModal';
 import EditBudgetModal from './EditBudgetModal';
 
 export default function BudgetPage() {
   const [summary, setSummary] = useState<BudgetSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
-  
-  // New state for inline form
-  const [newCategory, setNewCategory] = useState('');
-  const [newAmount, setNewAmount] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     loadBudgets();
@@ -36,34 +32,6 @@ export default function BudgetPage() {
     }
   };
 
-  const handleCreateBudget = async () => {
-    setError('');
-    
-    if (!newCategory) {
-      setError('Please select a category');
-      return;
-    }
-    
-    const amount = parseFloat(newAmount);
-    if (!newAmount || amount <= 0 || isNaN(amount)) {
-      setError('Please enter a valid amount');
-      return;
-    }
-
-    try {
-      setCreating(true);
-      await budgetAPI.create(newCategory, amount);
-      setNewCategory('');
-      setNewAmount('');
-      setError('');
-      await loadBudgets();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create budget');
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this budget?')) return;
     
@@ -78,6 +46,13 @@ export default function BudgetPage() {
   const handleEdit = (budget: Budget) => {
     setSelectedBudget(budget);
     setShowEditModal(true);
+  };
+
+  const getStatusColor = (remaining: number, limit: number) => {
+    const percentRemaining = (remaining / limit) * 100;
+    if (percentRemaining > 50) return 'text-green-600 bg-green-50';
+    if (percentRemaining > 25) return 'text-yellow-600 bg-yellow-50';
+    return 'text-red-600 bg-red-50';
   };
 
   const getProgressColor = (spent: number, limit: number) => {
@@ -116,69 +91,13 @@ export default function BudgetPage() {
           <h1 className="text-3xl font-bold text-gray-900">Budget Management</h1>
           <p className="mt-2 text-gray-600">Track and manage your spending limits</p>
         </div>
-      </div>
-
-      {/* Create Budget Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Plus className="h-5 w-5 mr-2" />
-          Add New Budget
-        </h3>
-        
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
-          </div>
-        )}
-        
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Category
-            </label>
-            <select 
-              value={newCategory} 
-              onChange={(e) => setNewCategory(e.target.value)}
-              disabled={creating}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+        <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
             >
-              <option value="">Select Category</option>
-              <option value="groceries">🛒 Groceries</option>
-              <option value="food">🍔 Food & Dining</option>
-              <option value="rent">🏠 Rent</option>
-              <option value="utilities">💡 Utilities</option>
-              <option value="transport">🚗 Transportation</option>
-              <option value="entertainment">🎮 Entertainment</option>
-              <option value="shopping">🛍️ Shopping</option>
-              <option value="healthcare">⚕️ Healthcare</option>
-              <option value="other">📦 Other</option>
-            </select>
-          </div>
-          
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Monthly Budget ($)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              placeholder="500.00"
-              value={newAmount}
-              onChange={(e) => setNewAmount(e.target.value)}
-              disabled={creating}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-            />
-          </div>
-          
-          <button
-            onClick={handleCreateBudget}
-            disabled={creating || !newCategory || !newAmount}
-            className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? 'Creating...' : 'Add Budget'}
-          </button>
-        </div>
+              <Plus className="h-5 w-5" />
+              <span>Add Budget</span>
+        </button>
       </div>
 
       {/* Summary Cards */}
@@ -230,7 +149,14 @@ export default function BudgetPage() {
         <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
           <DollarSign className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No Budgets Yet</h3>
-          <p className="text-gray-600">Use the form above to create your first budget</p>
+          <p className="text-gray-600 mb-4">Start managing your spending by creating budgets</p>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center space-x-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            <span>Create Your First Budget</span>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -335,7 +261,17 @@ export default function BudgetPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* Modals */}
+      {showCreateModal && (
+        <CreateBudgetModal
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            loadBudgets();
+          }}
+        />
+      )}
+
       {showEditModal && selectedBudget && (
         <EditBudgetModal
           budget={selectedBudget}
