@@ -17,6 +17,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+class BudgetCreate(BaseModel):
+    category: str
+    monthly_limit: float
+
+class BudgetUpdate(BaseModel):
+    monthly_limit: float
+
 app = FastAPI(title="AI Finance Assistant API", version="1.0.0")
 
 # CORS middleware - MUST BE BEFORE ROUTES
@@ -436,24 +443,6 @@ async def detect_anomalies():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Budget routes
-@app.get("/api/budget")
-async def get_budgets_old():
-    """Get all budget limits (old endpoint)"""
-    try:
-        budgets = db.get_budgets()
-        return {"budgets": budgets}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/budget")
-async def create_budget_old(budget: BudgetCreate):
-    """Create or update budget limit (old endpoint)"""
-    try:
-        result = db.set_budget(budget.category, budget.monthly_limit)
-        return {"success": True, "budget": result}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
 @app.get("/api/budgets")
 async def get_budgets():
     """Get all budgets"""
@@ -464,19 +453,19 @@ async def get_budgets():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/budgets")
-async def create_budget(category: str, monthly_limit: float):
+async def create_budget(budget: BudgetCreate):
     """Create a new budget"""
     try:
-        result = db.set_budget(category, monthly_limit)
+        result = db.set_budget(budget.category, budget.monthly_limit)
         return {"success": True, "budget": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.put("/api/budgets/{budget_id}")
-async def update_budget(budget_id: int, monthly_limit: float):
+async def update_budget(budget_id: int, request: BudgetUpdate):
     """Update a budget"""
     try:
-        result = db.update_budget(budget_id, monthly_limit)
+        result = db.update_budget(budget_id, request.monthly_limit)
         if result:
             return {"success": True, "budget": result}
         raise HTTPException(status_code=404, detail="Budget not found")
@@ -515,7 +504,7 @@ async def get_budget_summary():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 # Savings Goals routes
 @app.get("/api/savings/goals")
 async def get_savings_goals(include_completed: bool = False):
