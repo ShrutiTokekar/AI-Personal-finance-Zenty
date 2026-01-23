@@ -3,7 +3,7 @@ import axios from 'axios';
 
 
 // Try using the full URL instead of relative
-const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = 'https://shrutitokekar-zenty-finance.hf.space/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
