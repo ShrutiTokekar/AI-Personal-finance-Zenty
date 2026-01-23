@@ -1,6 +1,6 @@
 // frontend/src/components/Budget/CreateBudgetModal.tsx
 import { useState } from 'react';
-import { X, DollarSign } from 'lucide-react';
+import { X, DollarSign, CheckCircle } from 'lucide-react';
 import { budgetAPI } from '../../services/api';
 
 interface CreateBudgetModalProps {
@@ -22,9 +22,10 @@ const categories = [
 
 export default function CreateBudgetModal({ onClose, onSuccess }: CreateBudgetModalProps) {
   const [category, setCategory] = useState('');
-  const [monthlyLimit, setMonthlyLimit] = useState<number>(0);
+  const [monthlyLimit, setMonthlyLimit] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,22 +36,50 @@ export default function CreateBudgetModal({ onClose, onSuccess }: CreateBudgetMo
       return;
     }
 
-    if (monthlyLimit <= 0) {
+    const limitNum = parseFloat(monthlyLimit);
+    if (!monthlyLimit || limitNum <= 0 || isNaN(limitNum)) {
       setError('Please enter a valid budget amount');
       return;
     }
 
     try {
       setSubmitting(true);
-      await budgetAPI.create(category, monthlyLimit);
-      onSuccess();
+      console.log('Creating budget:', { category, monthly_limit: limitNum });
+      
+      const response = await budgetAPI.create(category, limitNum);
+      console.log('Budget created successfully:', response.data);
+      
+      setSuccess(true);
+      
+      // Wait 1 second to show success message, then close
+      setTimeout(() => {
+        onSuccess();
+      }, 1000);
+      
     } catch (error: any) {
       console.error('Failed to create budget:', error);
-      setError(error.response?.data?.detail || 'Failed to create budget. Please try again.');
-    } finally {
+      setError(
+        error.response?.data?.detail || 
+        error.message || 
+        'Failed to create budget. Please try again.'
+      );
       setSubmitting(false);
     }
   };
+
+  if (success) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+            <CheckCircle className="h-8 w-8 text-green-600" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Budget Created!</h3>
+          <p className="text-gray-600">Your budget has been successfully created.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -65,7 +94,7 @@ export default function CreateBudgetModal({ onClose, onSuccess }: CreateBudgetMo
           <button
             onClick={onClose}
             disabled={submitting}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
           >
             <X className="h-6 w-6 text-gray-500" />
           </button>
@@ -88,7 +117,8 @@ export default function CreateBudgetModal({ onClose, onSuccess }: CreateBudgetMo
                   key={cat.value}
                   type="button"
                   onClick={() => setCategory(cat.value)}
-                  className={`px-3 py-3 border rounded-lg text-center transition-colors ${
+                  disabled={submitting}
+                  className={`px-3 py-3 border rounded-lg text-center transition-colors disabled:opacity-50 ${
                     category === cat.value
                       ? 'border-primary-500 bg-primary-50'
                       : 'border-gray-300 hover:bg-gray-50'
@@ -110,9 +140,10 @@ export default function CreateBudgetModal({ onClose, onSuccess }: CreateBudgetMo
               step="0.01"
               min="0.01"
               required
-              value={monthlyLimit || ''}
-              onChange={(e) => setMonthlyLimit(parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={monthlyLimit}
+              onChange={(e) => setMonthlyLimit(e.target.value)}
+              disabled={submitting}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
               placeholder="500.00"
             />
           </div>
@@ -122,13 +153,13 @@ export default function CreateBudgetModal({ onClose, onSuccess }: CreateBudgetMo
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={submitting || !category}
+              disabled={submitting || !category || !monthlyLimit}
               className="flex-1 px-4 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
             >
               {submitting ? 'Creating...' : 'Create Budget'}
