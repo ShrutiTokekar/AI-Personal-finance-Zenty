@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="zenty-logo.png" alt="Zenty Finance Logo" width="160"/>
+<img src="/frontend/public/logo.png" alt="Zenty Finance Logo" width="160"/>
 
 # Zenty Finance
 ### AI-Powered Personal Finance Assistant
