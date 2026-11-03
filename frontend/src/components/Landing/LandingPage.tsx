@@ -352,18 +352,10 @@ export default function LandingPage({ onSignIn, onSignUp }: Props) {
         </AnimatePresence>
       </header>
 
-      {/* Hero: a rake draws a winding road; each pin opens a Zenty feature */}
+      {/* Hero: a rake draws three winding lines; each node opens a Zenty feature */}
       <section id="top" className="relative overflow-hidden bg-primary-600 pt-28 pb-16 sm:pt-32 lg:flex lg:min-h-[100svh] lg:items-center lg:pb-20">
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_70%_40%,#7ea35c,transparent_70%)]" />
-          {/* concentric raked rings and diagonal sand bands, echoing the Zenty logo */}
-          <svg className="absolute -right-40 top-1/2 h-[1100px] w-[1100px] -translate-y-1/2 opacity-[0.07]" viewBox="0 0 100 100">
-            {Array.from({ length: 9 }).map((_, k) => (
-              <circle key={k} cx="50" cy="50" r={6 + k * 5.2} fill="none" stroke="#edead1" strokeWidth="1.6" />
-            ))}
-          </svg>
-          <div className="absolute -left-1/4 top-0 h-full w-[38%] -skew-x-[28deg] bg-sand/[0.06]" />
-          <div className="absolute left-[38%] top-0 h-full w-[10%] -skew-x-[28deg] bg-sand/[0.05]" />
           <div className="grain absolute inset-0" />
         </div>
 

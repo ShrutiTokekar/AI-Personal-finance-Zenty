@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
-import { ZENTY_Z_PATH } from './zentyZ';
 
 /* ---------- formatting ---------- */
 
@@ -174,31 +173,9 @@ export function relativeDay(iso: string) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/** Zenty logo mark: the original Zenty Z in saffron over fine raked zen-garden lines. */
+/** Zenty logo mark. */
 export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 64 64" className={className} role="img" aria-label="Zenty">
-      <defs>
-        <linearGradient id="zentyMarkG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#587d3e" /><stop offset="1" stopColor="#2f4024" /></linearGradient>
-        <linearGradient id="zentyMarkZ" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f9d27c" /><stop offset="1" stopColor="#e5a432" /></linearGradient>
-        <clipPath id="zentyMarkC"><rect width="64" height="64" rx="14" /></clipPath>
-      </defs>
-      <rect width="64" height="64" rx="14" fill="url(#zentyMarkG)" />
-      <g clipPath="url(#zentyMarkC)" fill="none" stroke="#cdec85" strokeWidth="0.8" strokeLinecap="round" opacity="0.32">
-        <path d="M-6 28.0C16 28.0 24 12.0 40 12.0S58 2.0 70 2.0" />
-        <path d="M-6 32.4C16 32.4 24 16.4 40 16.4S58 6.4 70 6.4" />
-        <path d="M-6 36.8C16 36.8 24 20.8 40 20.8S58 10.8 70 10.8" />
-        <path d="M-6 41.2C16 41.2 24 25.2 40 25.2S58 15.2 70 15.2" />
-        <path d="M-6 45.6C16 45.6 24 29.6 40 29.6S58 19.6 70 19.6" />
-        <path d="M-6 50.0C16 50.0 24 34.0 40 34.0S58 24.0 70 24.0" />
-        <path d="M-6 54.4C16 54.4 24 38.4 40 38.4S58 28.4 70 28.4" />
-        <path d="M-6 58.8C16 58.8 24 42.8 40 42.8S58 32.8 70 32.8" />
-        <path d="M-6 63.2C16 63.2 24 47.2 40 47.2S58 37.2 70 37.2" />
-      </g>
-      <path d={ZENTY_Z_PATH} transform="translate(15.91 13.00) scale(38)" fill="url(#zentyMarkZ)" />
-      <rect x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none" stroke="#ffffff" strokeOpacity="0.08" />
-    </svg>
-  );
+  return <img src="/zenty-logo.png" alt="Zenty" className={`${className} shrink-0 rounded-[24%] object-cover ring-1 ring-black/5`} />;
 }
 
 /** Full lockup: mark + wordmark. */

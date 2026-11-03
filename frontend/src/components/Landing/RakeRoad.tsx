@@ -3,9 +3,9 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ArrowUpRight, PiggyBank, Sun } from 'lucide-react';
 
 /**
- * A rake slowly draws a winding road of three lines (two edges and a dashed
- * centre line). Pins drop along the road as it's drawn, each opening a small
- * animated widget for a Zenty feature. Decorative (aria-hidden).
+ * A rake slowly draws three solid winding lines across the green. Glowing
+ * nodes appear along the way, each opening a small animated widget for a
+ * Zenty feature. Decorative (aria-hidden).
  */
 
 const VW = 600;
@@ -167,9 +167,6 @@ const WIDGET: Record<Feature, () => ReactElement> = {
 interface Geo {
   left: string;
   right: string;
-  innerL: string;
-  innerR: string;
-  surface: string;
   pins: { x: number; y: number; side: 'left' | 'right'; feature: Feature; t: number }[];
 }
 
@@ -211,12 +208,11 @@ export default function RakeRoad() {
       return { t, x: p.x, y: p.y, nx: -dy / len, ny: dx / len };
     });
     const line = (k: number) => pts.map((p, i) => `${i ? 'L' : 'M'}${(p.x + p.nx * widthAt(p.t) * k).toFixed(1)} ${(p.y + p.ny * widthAt(p.t) * k).toFixed(1)}`).join('');
-    const surface = line(1) + pts.slice().reverse().map((p) => `L${(p.x - p.nx * widthAt(p.t)).toFixed(1)} ${(p.y - p.ny * widthAt(p.t)).toFixed(1)}`).join('') + 'Z';
     const pins = PINS.map(({ t, feature }) => {
       const p = path.getPointAtLength(L * t);
       return { x: p.x, y: p.y, side: (p.x >= VW / 2 ? 'left' : 'right') as 'left' | 'right', feature, t };
     });
-    setGeo({ left: line(1), right: line(-1), innerL: line(0.5), innerR: line(-0.5), surface, pins });
+    setGeo({ left: line(1), right: line(-1), pins });
   }, []);
 
   useEffect(() => {
@@ -294,19 +290,13 @@ export default function RakeRoad() {
         </defs>
         <path ref={guideRef} d={CENTER} fill="none" stroke="none" />
         {geo && (
-          <g ref={roadRef}>
-            <g mask="url(#rrReveal)">
-              {/* raked sand road surface */}
-              <path d={geo.surface} fill="#edead1" opacity="0.14" />
-              <path d={geo.innerL} fill="none" stroke="#edead1" strokeOpacity="0.28" strokeWidth="1.4" />
-              <path d={geo.innerR} fill="none" stroke="#edead1" strokeOpacity="0.28" strokeWidth="1.4" />
-              {/* the three big lines */}
-              <path d={geo.left} fill="none" stroke="#1f2b18" strokeOpacity="0.18" strokeWidth="7" transform="translate(2 3)" filter="url(#rrSoft)" />
-              <path d={geo.right} fill="none" stroke="#1f2b18" strokeOpacity="0.18" strokeWidth="7" transform="translate(2 3)" filter="url(#rrSoft)" />
-              <path d={geo.left} fill="none" stroke="#f6f2e2" strokeWidth="5" strokeLinecap="round" />
-              <path d={geo.right} fill="none" stroke="#f6f2e2" strokeWidth="5" strokeLinecap="round" />
-              <path d={CENTER} fill="none" stroke="#f7c95e" strokeWidth="3.5" strokeDasharray="16 14" strokeLinecap="round" />
-            </g>
+          <g ref={roadRef} mask="url(#rrReveal)">
+            {[geo.left, CENTER, geo.right].map((d, i) => (
+              <g key={i}>
+                <path d={d} fill="none" stroke="#1f2b18" strokeOpacity="0.16" strokeWidth="6" transform="translate(2 3)" filter="url(#rrSoft)" />
+                <path d={d} fill="none" stroke="#f6f2e2" strokeWidth="4.5" strokeLinecap="round" />
+              </g>
+            ))}
           </g>
         )}
         {/* the rake: three tines on the three lines, handle reaching ahead */}
@@ -329,16 +319,22 @@ export default function RakeRoad() {
           const yPct = (pin.y / VH) * 100;
           return (
             <div key={`${cycle}-${i}`}>
-              <motion.div className="absolute z-10" style={{ left: `${xPct}%`, top: `${yPct}%` }}
-                initial={{ opacity: 0, y: -26, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }}
-                exit={{ opacity: 0, transition: { duration: 0.4 } }} transition={{ type: 'spring', stiffness: 320, damping: 16 }}>
-                <svg width="26" height="34" viewBox="0 0 26 34" className="-translate-y-full drop-shadow-[0_6px_6px_rgba(31,43,24,0.35)]">
-                  <path d="M13 33C13 33 2 20.5 2 12.5C2 6.15 6.92 1 13 1s11 5.15 11 11.5C24 20.5 13 33 13 33Z" fill="#f6f2e2" />
-                  <circle cx="13" cy="12.5" r="5.2" fill="#e09b1f" />
-                </svg>
+              <motion.div className="absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${xPct}%`, top: `${yPct}%` }}
+                initial={{ opacity: 0, scale: 0.3 }} animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.4 } }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}>
+                <span className="relative flex h-5 w-5 items-center justify-center">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-saffron-300/50" style={{ animationDuration: '2.2s' }} />
+                  <span className="absolute inset-0 rounded-full bg-[#f6f2e2] shadow-[0_2px_8px_rgba(31,43,24,0.35)]" />
+                  <span className="relative h-2.5 w-2.5 rounded-full bg-saffron-500" />
+                </span>
               </motion.div>
+              {!(compact && (pin.feature === 'budget' || pin.feature === 'safe')) && (
+                <motion.span className="absolute z-[5] h-[1.5px] bg-[#f6f2e2]/80"
+                  style={pin.side === 'right' ? { left: `calc(${xPct}% + 10px)`, top: `${yPct}%`, width: 14, originX: 0 } : { right: `calc(${100 - xPct}% + 10px)`, top: `${yPct}%`, width: 14, originX: 1 }}
+                  initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} exit={{ opacity: 0 }} transition={{ delay: 0.15, duration: 0.3 }} />
+              )}
               {!(compact && (pin.feature === 'budget' || pin.feature === 'safe')) && <motion.div className="absolute z-20 w-[47%] -translate-y-1/2"
-                style={pin.side === 'right' ? { left: `calc(${xPct}% + 22px)`, top: `${yPct - 3}%` } : { right: `calc(${100 - xPct}% + 22px)`, top: `${yPct - 3}%` }}
+                style={pin.side === 'right' ? { left: `calc(${xPct}% + 24px)`, top: `${yPct}%` } : { right: `calc(${100 - xPct}% + 24px)`, top: `${yPct}%` }}
                 initial={{ opacity: 0, x: pin.side === 'right' ? -10 : 10, scale: 0.92 }} animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.4 } }} transition={{ delay: 0.25, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}>
                 <Widget />
