@@ -19,9 +19,9 @@ const money = (n: number | null | undefined, cur = 'USD') =>
   n == null ? '—' : n.toLocaleString(undefined, { style: 'currency', currency: cur });
 
 function AccountIcon({ type }: { type: string }) {
-  if (type === 'credit') return <CreditCard className="h-5 w-5 text-orange-600" />;
-  if (type === 'loan') return <Landmark className="h-5 w-5 text-orange-600" />;
-  return <Wallet className="h-5 w-5 text-orange-600" />;
+  if (type === 'credit') return <CreditCard className="h-5 w-5 text-primary-600" />;
+  if (type === 'loan') return <Landmark className="h-5 w-5 text-primary-600" />;
+  return <Wallet className="h-5 w-5 text-primary-600" />;
 }
 
 export default function BankPage({ user, enabled, onRequestVerify }: { user: User; enabled: boolean; onRequestVerify: () => void }) {
@@ -118,19 +118,19 @@ export default function BankPage({ user, enabled, onRequestVerify }: { user: Use
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-amber-950">Bank accounts</h1>
-          <p className="mt-1 text-stone-600">Balances and transactions from your linked banks.</p>
+          <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-ink">Bank accounts</h1>
+          <p className="mt-1 text-gray-600">Balances and transactions from your linked banks.</p>
         </div>
         {user.email_verified && enabled && (
           <div className="flex gap-2">
             {items.length > 0 && (
               <button onClick={sync} disabled={!!busy}
-                className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2.5 font-semibold text-orange-900 hover:bg-orange-50 disabled:opacity-60">
+                className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 font-semibold text-ink hover:bg-gray-50 disabled:opacity-60">
                 <RefreshCw className={`h-4 w-4 ${busy === 'sync' ? 'animate-spin' : ''}`} /> Sync
               </button>
             )}
             <button onClick={link} disabled={!!busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-2.5 font-semibold text-white shadow hover:from-orange-600 hover:to-amber-700 disabled:opacity-60">
+              className="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2.5 font-semibold text-white shadow hover:bg-ink-700 disabled:opacity-60">
               {busy === 'link' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Link a bank
             </button>
           </div>
@@ -155,46 +155,46 @@ export default function BankPage({ user, enabled, onRequestVerify }: { user: Use
       )}
 
       {!enabled ? (
-        <div className="rounded-2xl bg-white border border-orange-100 p-8 text-center">
-          <Building2 className="mx-auto h-10 w-10 text-orange-300" />
-          <p className="mt-3 font-semibold text-amber-950">Bank linking isn't switched on yet</p>
-          <p className="mt-1 text-sm text-stone-600">The site owner needs to add Plaid keys on the server.</p>
+        <div className="card p-8 text-center">
+          <Building2 className="mx-auto h-10 w-10 text-gray-400" />
+          <p className="mt-3 font-semibold text-ink">Bank linking isn't switched on yet</p>
+          <p className="mt-1 text-sm text-gray-600">The site owner needs to add Plaid keys on the server.</p>
         </div>
       ) : !user.email_verified ? (
-        <div className="rounded-2xl bg-white border border-orange-100 p-8 text-center">
-          <Lock className="mx-auto h-10 w-10 text-orange-300" />
-          <p className="mt-3 font-semibold text-amber-950">Verify your email to link a bank</p>
-          <p className="mt-1 text-sm text-stone-600">This extra step makes sure only you can connect accounts to your Zenty.</p>
-          <button onClick={onRequestVerify} className="mt-4 rounded-xl bg-orange-500 px-4 py-2 font-semibold text-white hover:bg-orange-600">
+        <div className="card p-8 text-center">
+          <Lock className="mx-auto h-10 w-10 text-gray-400" />
+          <p className="mt-3 font-semibold text-ink">Verify your email to link a bank</p>
+          <p className="mt-1 text-sm text-gray-600">This extra step makes sure only you can connect accounts to your Zenty.</p>
+          <button onClick={onRequestVerify} className="mt-4 rounded-xl bg-ink px-4 py-2 font-semibold text-white hover:bg-ink-700">
             Resend verification email
           </button>
         </div>
       ) : loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-orange-500" /></div>
+        <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary-600" /></div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-white border border-orange-100 p-10 text-center">
-          <Building2 className="mx-auto h-12 w-12 text-orange-300" />
-          <p className="mt-3 text-lg font-semibold text-amber-950">No banks linked yet</p>
-          <p className="mt-1 text-stone-600">Link checking, savings or credit cards to import transactions automatically.</p>
+        <div className="card p-10 text-center">
+          <Building2 className="mx-auto h-12 w-12 text-gray-400" />
+          <p className="mt-3 text-lg font-semibold text-ink">No banks linked yet</p>
+          <p className="mt-1 text-gray-600">Link checking, savings or credit cards to import transactions automatically.</p>
         </div>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl bg-white border border-orange-100 p-5">
-              <p className="text-sm text-stone-500">Cash & investments</p>
+            <div className="card p-5">
+              <p className="text-sm text-gray-500">Cash & investments</p>
               <p className="mt-1 text-2xl font-bold text-green-700">{money(totals.assets)}</p>
             </div>
-            <div className="rounded-2xl bg-white border border-orange-100 p-5">
-              <p className="text-sm text-stone-500">Credit & loans</p>
+            <div className="card p-5">
+              <p className="text-sm text-gray-500">Credit & loans</p>
               <p className="mt-1 text-2xl font-bold text-red-700">{money(totals.debt)}</p>
             </div>
           </div>
           {items.map((item) => (
-            <div key={item.id} className="rounded-2xl bg-white border border-orange-100 overflow-hidden">
-              <div className="flex items-center justify-between bg-orange-50 px-5 py-3">
+            <div key={item.id} className="card overflow-hidden">
+              <div className="flex items-center justify-between bg-gray-50 px-5 py-3">
                 <div>
-                  <p className="font-bold text-amber-950">{item.institution}</p>
-                  <p className="text-xs text-stone-500">
+                  <p className="font-bold text-ink">{item.institution}</p>
+                  <p className="text-xs text-gray-500">
                     {item.last_synced ? `Synced ${new Date(item.last_synced + 'Z').toLocaleString()}` : 'Not synced yet'}
                   </p>
                 </div>
@@ -202,20 +202,20 @@ export default function BankPage({ user, enabled, onRequestVerify }: { user: Use
                   <Trash2 className="h-4 w-4" /> Disconnect
                 </button>
               </div>
-              <ul className="divide-y divide-orange-50">
+              <ul className="divide-y divide-line">
                 {item.accounts.map((a) => (
                   <li key={a.id} className="flex items-center justify-between px-5 py-4">
                     <div className="flex items-center gap-3">
                       <AccountIcon type={a.type} />
                       <div>
-                        <p className="font-medium text-stone-900">{a.name}</p>
-                        <p className="text-xs text-stone-500 capitalize">{a.subtype || a.type}{a.mask ? ` •••• ${a.mask}` : ''}</p>
+                        <p className="font-medium text-gray-900">{a.name}</p>
+                        <p className="text-xs text-gray-500 capitalize">{a.subtype || a.type}{a.mask ? ` •••• ${a.mask}` : ''}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-stone-900">{money(a.current_balance, a.currency)}</p>
+                      <p className="font-semibold text-gray-900">{money(a.current_balance, a.currency)}</p>
                       {a.available_balance != null && a.available_balance !== a.current_balance && (
-                        <p className="text-xs text-stone-500">{money(a.available_balance, a.currency)} available</p>
+                        <p className="text-xs text-gray-500">{money(a.available_balance, a.currency)} available</p>
                       )}
                     </div>
                   </li>

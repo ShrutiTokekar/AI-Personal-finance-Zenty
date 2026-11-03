@@ -60,6 +60,7 @@ export interface User {
 export interface PublicConfig {
   google_client_id: string | null;
   bank_linking: boolean;
+  email_enabled?: boolean;
 }
 
 export const authAPI = {
@@ -277,6 +278,25 @@ export const analyticsAPI = {
   getSummary: () => api.get<Summary>('/analytics/summary'),
   getTrends: () => api.get<{ trends: Trend[] }>('/analytics/trends'),
   getCategoryBreakdown: () => api.get<{ breakdown: CategoryBreakdown[] }>('/analytics/category-breakdown'),
+};
+
+export interface ZenFactor { key: string; label: string; points: number; max: number; tip: string }
+export interface Overview {
+  summary: Summary;
+  zen: { score: number; label: string; factors: ZenFactor[] };
+  safe_to_spend: { daily: number; remaining: number; days_left: number; basis: string };
+  daily: { day: number; amount: number; future: boolean }[];
+  trends: Trend[];
+  categories: CategoryBreakdown[];
+  budgets: Budget[];
+  goals: SavingsGoal[];
+  recent: Transaction[];
+  recurring: { items: { name: string; category: string; amount: number; last_date: string; next_date: string }[]; monthly_total: number };
+  net_worth: { cash: number; debt: number; invested: number; total: number; linked_accounts: number };
+}
+
+export const overviewAPI = {
+  get: () => api.get<Overview>('/overview'),
 };
 
 export const chatAPI = {

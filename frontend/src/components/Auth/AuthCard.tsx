@@ -20,7 +20,7 @@ function strength(pw: string) {
   if (/\d/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
   const labels = ['Too weak', 'Weak', 'Okay', 'Good', 'Strong', 'Very strong'];
-  const colors = ['bg-red-400', 'bg-red-400', 'bg-amber-400', 'bg-lime-500', 'bg-green-500', 'bg-green-600'];
+  const colors = ['bg-red-400', 'bg-red-400', 'bg-matcha-400', 'bg-matcha-500', 'bg-primary-500', 'bg-primary-600'];
   return { score, label: labels[score], color: colors[score] };
 }
 
@@ -91,27 +91,27 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
   };
 
   const input =
-    'w-full rounded-xl border border-orange-200 bg-white pl-11 pr-4 py-3 text-stone-900 placeholder-stone-400 ' +
-    'focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition';
+    'w-full rounded-xl border border-line bg-white pl-11 pr-4 py-3 text-ink placeholder-gray-400 ' +
+    'focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition';
 
   return (
-    <div className="w-full max-w-md bg-white/90 backdrop-blur rounded-3xl shadow-xl shadow-orange-900/10 border border-orange-100 p-8">
+    <div className="w-full max-w-md">
       {(mode === 'forgot' || mode === 'reset') && (
-        <button onClick={() => switchMode('login')} className="mb-4 inline-flex items-center gap-1 text-sm text-orange-800 hover:text-orange-950">
+        <button onClick={() => switchMode('login')} className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-ink">
           <ArrowLeft className="h-4 w-4" /> Back to sign in
         </button>
       )}
-      <h2 className="text-2xl font-extrabold text-amber-950">{titles[mode][0]}</h2>
-      <p className="mt-1 text-stone-600">{titles[mode][1]}</p>
+      <h2 className="font-display text-3xl font-semibold tracking-tight text-ink">{titles[mode][0]}</h2>
+      <p className="mt-1.5 text-gray-500">{titles[mode][1]}</p>
 
       {(mode === 'login' || mode === 'signup') && (
-        <div className="mt-6 grid grid-cols-2 rounded-xl bg-orange-50 p-1 text-sm font-semibold">
+        <div className="mt-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1 text-sm font-semibold">
           {(['login', 'signup'] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => switchMode(m)}
-              className={`rounded-lg py-2 transition ${mode === m ? 'bg-white text-amber-950 shadow' : 'text-orange-800 hover:text-amber-950'}`}
+              className={`rounded-lg py-2 transition ${mode === m ? 'bg-white text-ink shadow-card' : 'text-gray-500 hover:text-ink'}`}
             >
               {m === 'login' ? 'Sign in' : 'Sign up'}
             </button>
@@ -128,8 +128,8 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
               text={mode === 'signup' ? 'signup_with' : 'signin_with'}
             />
           </div>
-          <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wider text-stone-400">
-            <span className="h-px flex-1 bg-orange-100" /> or with email <span className="h-px flex-1 bg-orange-100" />
+          <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wider text-gray-400">
+            <span className="h-px flex-1 bg-line" /> or with email <span className="h-px flex-1 bg-line" />
           </div>
         </>
       )}
@@ -138,7 +138,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         {mode === 'signup' && (
           <label className="block relative">
             <span className="sr-only">Name</span>
-            <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-300" />
+            <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input className={input} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)}
               required maxLength={120} autoComplete="name" />
           </label>
@@ -146,7 +146,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         {mode !== 'reset' && (
           <label className="block relative">
             <span className="sr-only">Email</span>
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-300" />
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input className={input} type="email" placeholder="you@example.com" value={email}
               onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
           </label>
@@ -155,13 +155,13 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
           <div>
             <label className="block relative">
               <span className="sr-only">Password</span>
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-300" />
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input className={input + ' pr-12'} type={showPw ? 'text' : 'password'}
                 placeholder={mode === 'login' ? 'Password' : 'At least 10 characters'} value={password}
                 onChange={(e) => setPassword(e.target.value)} required maxLength={128}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
               <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? 'Hide password' : 'Show password'}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-600">
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
                 {showPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </label>
@@ -169,10 +169,10 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
               <div className="mt-2">
                 <div className="flex gap-1">
                   {[0, 1, 2, 3, 4].map((i) => (
-                    <span key={i} className={`h-1.5 flex-1 rounded-full ${i < pw.score ? pw.color : 'bg-stone-200'}`} />
+                    <span key={i} className={`h-1.5 flex-1 rounded-full ${i < pw.score ? pw.color : 'bg-gray-200'}`} />
                   ))}
                 </div>
-                <p className="mt-1 text-xs text-stone-500">{pw.label}. Mix upper & lowercase, numbers and symbols.</p>
+                <p className="mt-1 text-xs text-gray-500">{pw.label}. Mix upper & lowercase, numbers and symbols.</p>
               </div>
             )}
           </div>
@@ -180,7 +180,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
 
         {mode === 'login' && (
           <div className="text-right -mt-1">
-            <button type="button" onClick={() => switchMode('forgot')} className="text-sm font-medium text-orange-700 hover:text-orange-900">
+            <button type="button" onClick={() => switchMode('forgot')} className="text-sm font-medium text-primary-700 hover:text-primary-900">
               Forgot password?
             </button>
           </div>
@@ -190,14 +190,14 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         {notice && <p role="status" className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">{notice}</p>}
 
         <button type="submit" disabled={busy}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 py-3 font-semibold text-white shadow-lg shadow-orange-500/25 hover:from-orange-600 hover:to-amber-700 disabled:opacity-60 transition">
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-ink py-3 font-semibold text-white shadow-lift hover:bg-ink-700 disabled:opacity-60 transition">
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
           {{ login: 'Sign in', signup: 'Create account', forgot: 'Send reset link', reset: 'Update password' }[mode]}
         </button>
       </form>
 
       {mode === 'signup' && (
-        <p className="mt-4 text-xs text-stone-500 text-center">
+        <p className="mt-4 text-xs text-gray-500 text-center">
           By creating an account you agree to keep your login private. We'll send a welcome email to confirm your address.
         </p>
       )}

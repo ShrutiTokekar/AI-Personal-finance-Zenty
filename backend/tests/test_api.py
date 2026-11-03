@@ -240,3 +240,33 @@ def test_security_headers():
     r = client().get("/api/health")
     assert r.headers["X-Frame-Options"] == "DENY"
     assert r.headers["Cache-Control"] == "no-store"
+
+
+def test_overview_scores_and_recurring():
+    from datetime import datetime, timedelta
+    from app.db import SessionLocal
+    from app.models import Transaction, User
+    c = client()
+    signup(c, "overview@example.com")
+    c.post("/api/transactions", json={"amount": 3000, "category": "Salary", "type": "income"})
+    c.post("/api/transactions", json={"amount": 400, "category": "Groceries", "type": "expense"})
+    c.post("/api/budgets", json={"category": "Groceries", "monthly_limit": 600})
+    with SessionLocal() as db:
+        uid = db.query(User).filter_by(email="overview@example.com").one().id
+        now = datetime.utcnow()
+        for m in (1, 2, 3):
+            db.add(Transaction(user_id=uid, amount=15.99, category="Entertainment", type="expense",
+                               description="NETFLIX.COM 1234", date=now - timedelta(days=30 * m)))
+        db.commit()
+    r = c.get("/api/overview")
+    assert r.status_code == 200
+    d = r.json()
+    assert 0 <= d["zen"]["score"] <= 100 and len(d["zen"]["factors"]) == 4
+    assert d["safe_to_spend"]["remaining"] == 200
+    assert any("NETFLIX" in x["name"] for x in d["recurring"]["items"])
+    assert len(d["daily"]) >= 28
+    # isolation: another user sees nothing
+    other = client()
+    signup(other, "overview2@example.com")
+    o = other.get("/api/overview").json()
+    assert o["recent"] == [] and o["recurring"]["items"] == []

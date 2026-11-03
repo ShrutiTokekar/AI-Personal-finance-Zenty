@@ -104,6 +104,37 @@ def anomalies(user: User = Depends(current_user), db: Session = Depends(get_db))
     return {"anomalies": insights.unusual_transactions(db, user.id)}
 
 
+@router.get("/overview")
+def overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Everything the dashboard needs in one request."""
+    from ..models import BankAccount
+    uid = user.id
+    budgets = insights.budgets_with_spend(db, uid)
+    budgets.sort(key=lambda b: -(b["current_spent"] / b["monthly_limit"] if b["monthly_limit"] else 0))
+    goals = db.query(SavingsGoal).filter(SavingsGoal.user_id == uid, SavingsGoal.completed.is_(False)) \
+        .order_by(SavingsGoal.created_at.desc()).limit(3).all()
+    recent = db.query(Transaction).filter(Transaction.user_id == uid).order_by(Transaction.date.desc()).limit(6).all()
+    accounts = db.query(BankAccount).filter(BankAccount.user_id == uid).all()
+    holdings = db.query(StockHolding).filter(StockHolding.user_id == uid).all()
+    cash = sum(a.current_balance or 0 for a in accounts if a.type in ("depository", "investment"))
+    debt = sum(a.current_balance or 0 for a in accounts if a.type in ("credit", "loan"))
+    invested = sum(h.shares * h.purchase_price for h in holdings)
+    return {
+        "summary": insights.monthly_summary(db, uid),
+        "zen": insights.zen_score(db, uid),
+        "safe_to_spend": insights.safe_to_spend(db, uid),
+        "daily": insights.daily_spending(db, uid),
+        "trends": insights.spending_trends(db, uid),
+        "categories": insights.category_breakdown(db, uid),
+        "budgets": budgets[:4],
+        "goals": [g.to_dict() for g in goals],
+        "recent": [t.to_dict() for t in recent],
+        "recurring": insights.recurring_charges(db, uid),
+        "net_worth": {"cash": cash, "debt": debt, "invested": invested, "total": cash + invested - debt,
+                      "linked_accounts": len(accounts)},
+    }
+
+
 class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=500)
 

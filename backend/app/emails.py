@@ -9,20 +9,20 @@ from .config import get_settings
 log = logging.getLogger("zenty.email")
 settings = get_settings()
 
-BRAND = "#7c2d12"
-ACCENT = "#f97316"
+BRAND = "#0f231d"
+ACCENT = "#226d55"
 
 
 def _layout(title: str, body_html: str) -> str:
-    return f"""<!doctype html><html><body style="margin:0;background:#fff7ed;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1917">
+    return f"""<!doctype html><html><body style="margin:0;background:#f6f3ec;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1917">
 <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px"><tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #fed7aa">
-<tr><td style="background:{BRAND};padding:24px 32px;color:#fff;font-size:22px;font-weight:800;letter-spacing:.5px">Zenty</td></tr>
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8e2d5">
+<tr><td style="background:{BRAND};padding:24px 32px;color:#cdec85;font-size:24px;font-weight:700;letter-spacing:.3px;font-family:Georgia,serif">Zenty</td></tr>
 <tr><td style="padding:32px">
 <h1 style="margin:0 0 16px;font-size:22px;color:{BRAND}">{html.escape(title)}</h1>
 {body_html}
 </td></tr>
-<tr><td style="padding:16px 32px;background:#fff7ed;font-size:12px;color:#78716c">
+<tr><td style="padding:16px 32px;background:#f6f3ec;font-size:12px;color:#7a746b">
 Zenty will never ask for your password or bank login by email. If you didn't expect this message, you can ignore it.
 </td></tr></table></td></tr></table></body></html>"""
 
@@ -84,7 +84,7 @@ def send_verification(to: str, verify_url: str) -> bool:
 def send_password_reset(to: str, reset_url: str) -> bool:
     body = ("<p>Someone (hopefully you) asked to reset your Zenty password.</p>"
             + _button(reset_url, "Choose a new password")
-            + '<p style="font-size:13px;color:#78716c">This link expires in 1 hour and can only be used once. '
+            + '<p style="font-size:13px;color:#7a746b">This link expires in 1 hour and can only be used once. '
               "If you didn't request it, your account is still safe and no action is needed.</p>")
     return send_email(to, "Reset your Zenty password", _layout("Password reset", body))
 
@@ -121,7 +121,7 @@ def send_stock_digest(to: str, name: str, movers: list[dict], threshold: float) 
 <p style="font-size:18px">Your holdings moved <strong style="color:{'#15803d' if total >= 0 else '#b91c1c'}">{direction} ${abs(total):,.2f}</strong> today.</p>
 {sections}
 {_button(settings.app_url, "View portfolio")}
-<p style="font-size:12px;color:#78716c">Prices may be delayed. This is information, not financial advice.
+<p style="font-size:12px;color:#7a746b">Prices may be delayed. This is information, not financial advice.
 Turn these emails off any time in Zenty → Settings.</p>"""
     subject = f"Your stocks are {direction} today {'📈' if total >= 0 else '📉'}"
     return send_email(to, subject, _layout("Daily stock update", body))

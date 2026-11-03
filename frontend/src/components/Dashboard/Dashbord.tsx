@@ -1,156 +1,434 @@
-// frontend/src/components/Dashboard/Dashboard.tsx
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertCircle } from 'lucide-react';
-import { analyticsAPI, type Summary } from '../../services/api';
-import SpendingChart from './SpendingChart';
-import CategoryPieChart from './CategoryPieChart';
+// frontend/src/components/Dashboard/Dashbord.tsx
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BarChart3,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  Leaf,
+  Lightbulb,
+  PiggyBank,
+  Receipt,
+  Repeat,
+  Sun,
+  Target,
+  Wallet,
+} from 'lucide-react';
+import { overviewAPI, type Overview, type User } from '../../services/api';
+import { Card, CategoryTile, EmptyState, Money, Progress, ScoreRing, Spinner, formatMoney, relativeDay } from '../ui';
 
-export default function Dashboard() {
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [loading, setLoading] = useState(true);
+interface Props {
+  user: User;
+  onNavigate: (tab: string) => void;
+}
 
-  useEffect(() => {
-    loadSummary();
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+
+const monthName = (m: string) => {
+  const [y, mo] = m.split('-').map(Number);
+  return new Date(y, mo - 1, 1).toLocaleDateString(undefined, { month: 'short' });
+};
+
+/* ---------- Spending calendar (sequential, single hue) ---------- */
+const HEAT = ['bg-gray-100', 'bg-primary-100', 'bg-primary-200', 'bg-primary-400', 'bg-primary-600'];
+
+function SpendingCalendar({ days }: { days: Overview['daily'] }) {
+  const now = new Date();
+  const firstWeekday = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+  const max = Math.max(0, ...days.map((d) => d.amount));
+  const level = (a: number) => (a <= 0 ? 0 : Math.min(4, Math.ceil((a / max) * 4)));
+  const total = days.reduce((s, d) => s + d.amount, 0);
+  const spendDays = days.filter((d) => d.amount > 0).length;
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-gray-400">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+      </div>
+      <div className="mt-1.5 grid grid-cols-7 gap-1.5">
+        {Array.from({ length: firstWeekday }).map((_, i) => <span key={`b${i}`} />)}
+        {days.map((d) => {
+          const label = `${now.toLocaleDateString(undefined, { month: 'short' })} ${d.day}: ${d.future ? 'upcoming' : formatMoney(d.amount)}`;
+          return (
+            <span
+              key={d.day}
+              title={label}
+              aria-label={label}
+              className={`group relative aspect-square rounded-md ${d.future ? 'border border-dashed border-line bg-transparent' : HEAT[level(d.amount)]} ${
+                d.day === now.getDate() ? 'ring-2 ring-saffron-400 ring-offset-1' : ''
+              }`}
+            />
+          );
+        })}
+      </div>
+      <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+        <span>
+          {spendDays} spending day{spendDays === 1 ? '' : 's'} · <Money value={total} cents={false} />
+        </span>
+        <span className="flex items-center gap-1">
+          Less {HEAT.map((c) => <span key={c} className={`h-2.5 w-2.5 rounded-sm ${c}`} />)} More
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Trend tooltip ---------- */
+function TrendTip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-line bg-white px-3 py-2 shadow-lift">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="font-semibold text-ink"><Money value={payload[0].value} /></p>
+    </div>
+  );
+}
+
+export default function Dashboard({ user, onNavigate }: Props) {
+  const [data, setData] = useState<Overview | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await overviewAPI.get();
+      setData(r.data);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    }
   }, []);
 
-  const loadSummary = async () => {
-    try {
-      const response = await analyticsAPI.getSummary();
-      setSummary(response.data);
-    } catch (error) {
-      console.error('Failed to load summary:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    load();
+    window.addEventListener('zenty:data-changed', load);
+    return () => window.removeEventListener('zenty:data-changed', load);
+  }, [load]);
 
-  if (loading) {
+  const trend = useMemo(() => (data?.trends || []).map((t) => ({ name: monthName(t.month), amount: t.amount })), [data]);
+
+  if (failed && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div className="card p-10 text-center">
+        <p className="font-semibold text-ink">Couldn't load your dashboard.</p>
+        <button onClick={load} className="btn-ghost mt-4">Try again</button>
       </div>
     );
   }
+  if (!data) return <Spinner />;
 
-  const stats = [
-    {
-      name: 'Total Income',
-      value: `$${summary?.total_income.toFixed(2) || '0.00'}`,
-      icon: DollarSign,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-      change: null,
-    },
-    {
-      name: 'Total Expenses',
-      value: `$${summary?.total_expenses.toFixed(2) || '0.00'}`,
-      icon: TrendingDown,
-      color: 'text-red-600',
-      bgColor: 'bg-red-100',
-      change: summary?.expense_change || 0,
-    },
-    {
-      name: 'Net Savings',
-      value: `$${summary?.net_savings.toFixed(2) || '0.00'}`,
-      icon: PiggyBank,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
-      change: null,
-    },
-    {
-      name: 'Savings Rate',
-      value: `${summary?.savings_rate.toFixed(1) || '0.0'}%`,
-      icon: TrendingUp,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
-      change: null,
-    },
+  const s = data.summary;
+  const first = (user.name || '').split(' ')[0];
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const monthPct = Math.round((now.getDate() / daysInMonth) * 100);
+  const isNew = data.recent.length === 0;
+  const topCat = data.categories[0]?.amount || 0;
+
+  const checklist = [
+    { done: data.recent.length > 0, label: 'Log your first transaction', hint: 'Try the quick-add bar above', tab: 'transactions' },
+    { done: data.budgets.length > 0, label: 'Set a monthly budget', hint: 'Know what you can spend', tab: 'budget' },
+    { done: data.goals.length > 0, label: 'Create a savings goal', hint: 'A trip, a car, a safety net', tab: 'savings' },
+    { done: user.email_verified, label: 'Verify your email', hint: 'Unlocks bank sync & alerts', tab: 'settings' },
+    { done: data.net_worth.linked_accounts > 0, label: 'Link a bank account', hint: 'Import transactions automatically', tab: 'bank' },
   ];
+  const doneCount = checklist.filter((c) => c.done).length;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-2 text-gray-600">Your financial overview at a glance</p>
+      {/* Greeting */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="eyebrow">{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <h1 className="mt-2 font-display text-3xl sm:text-4xl font-semibold tracking-tight text-ink">
+            {greeting()}{first ? `, ${first}` : ''}.
+          </h1>
+        </div>
+        <div className="w-full sm:w-64">
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>{now.toLocaleDateString(undefined, { month: 'long' })}</span>
+            <span>{daysInMonth - now.getDate()} days left</span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line">
+            <div className="h-full rounded-full bg-ink" style={{ width: `${monthPct}%` }} />
+          </div>
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
-          <motion.div
-            key={stat.name}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm text-gray-600 font-medium">{stat.name}</p>
-                <p className="mt-2 text-3xl font-bold text-gray-900">{stat.value}</p>
-                {stat.change !== null && stat.change !== 0 && (
-                  <div className="mt-2 flex items-center">
-                    <span
-                      className={`text-sm font-medium ${
-                        stat.change > 0 ? 'text-red-600' : 'text-green-600'
-                      }`}
-                    >
-                      {stat.change > 0 ? '↑' : '↓'} {Math.abs(stat.change).toFixed(1)}%
-                    </span>
-                    <span className="text-xs text-gray-500 ml-2">vs last month</span>
-                  </div>
-                )}
-              </div>
-              <div className={`${stat.bgColor} p-3 rounded-lg`}>
-                <stat.icon className={`h-6 w-6 ${stat.color}`} />
-              </div>
+      {/* Getting started */}
+      {doneCount < checklist.length && (
+        <Card className="!p-0 overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-4">
+            <div>
+              <h2 className="font-semibold text-ink">Get set up</h2>
+              <p className="text-sm text-gray-500">{doneCount} of {checklist.length} done. Each step makes your Zen Score smarter.</p>
             </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Expense Change Alert */}
-      {summary && summary.expense_change > 10 && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start space-x-3"
-        >
-          <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <h3 className="font-semibold text-yellow-900">Spending Alert</h3>
-            <p className="text-sm text-yellow-800 mt-1">
-              Your expenses increased by {summary.expense_change.toFixed(1)}% compared to last month.
-              Consider reviewing your spending habits.
-            </p>
+            <div className="flex gap-1">
+              {checklist.map((c, i) => <span key={i} className={`h-1.5 w-6 rounded-full ${c.done ? 'bg-primary-500' : 'bg-line'}`} />)}
+            </div>
           </div>
-        </motion.div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5">
+            {checklist.map((c) => (
+              <button
+                key={c.label}
+                onClick={() => onNavigate(c.tab)}
+                disabled={c.done}
+                className="group flex items-start gap-3 border-line px-5 py-4 text-left transition hover:bg-gray-50 disabled:hover:bg-transparent lg:border-r last:border-r-0"
+              >
+                <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${c.done ? 'border-primary-500 bg-primary-500 text-white' : 'border-gray-300'}`}>
+                  {c.done && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <span>
+                  <span className={`block text-sm font-medium ${c.done ? 'text-gray-400 line-through' : 'text-ink'}`}>{c.label}</span>
+                  {!c.done && <span className="block text-xs text-gray-500">{c.hint}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
       )}
 
-      {/* Positive Savings Alert */}
-      {summary && summary.savings_rate > 20 && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start space-x-3"
-        >
-          <PiggyBank className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <h3 className="font-semibold text-green-900">Great Job! 🎉</h3>
-            <p className="text-sm text-green-800 mt-1">
-              You're saving {summary.savings_rate.toFixed(1)}% of your income. Keep up the excellent work!
-            </p>
+      {/* Hero row */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* Zen Score */}
+        <section className="relative overflow-hidden rounded-3xl bg-ink p-6 text-white shadow-lift lg:col-span-5">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary-500/20 blur-3xl" />
+          <div className="relative flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-[15px] font-semibold"><Leaf className="h-4 w-4 text-matcha-300" /> Zen Score</h2>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-saffron-300">{data.zen.label}</span>
           </div>
-        </motion.div>
-      )}
+          <div className="relative mt-5 flex flex-col items-center gap-6 sm:flex-row">
+            <ScoreRing score={data.zen.score}>
+              <span className="font-display text-5xl font-semibold leading-none">{data.zen.score}</span>
+              <span className="mt-1 text-xs text-white/50">out of 100</span>
+            </ScoreRing>
+            <ul className="w-full flex-1 space-y-3">
+              {data.zen.factors.map((f) => (
+                <li key={f.key} title={f.tip}>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-white/70">{f.label}</span>
+                    <span className="num font-semibold">{f.points}/{f.max}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-gradient-to-r from-saffron-300 to-primary-300 transition-all duration-700" style={{ width: `${(f.points / f.max) * 100}%` }} />
+                  </div>
+                  <p className="mt-1 text-[11px] text-white/45">{f.tip}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SpendingChart />
-        <CategoryPieChart />
+        {/* Safe to spend */}
+        <section className="card flex flex-col p-6 lg:col-span-3">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Sun className="h-4 w-4 text-saffron-500" /> Safe to spend today</h2>
+          <p className="mt-6 font-display text-5xl font-semibold tracking-tight text-ink"><Money value={data.safe_to_spend.daily} cents={false} /></p>
+          <p className="mt-2 text-sm text-gray-500">
+            <Money value={data.safe_to_spend.remaining} cents={false} /> left over {data.safe_to_spend.days_left} day{data.safe_to_spend.days_left === 1 ? '' : 's'}
+          </p>
+          <p className="mt-auto pt-6 text-xs text-gray-400">{data.safe_to_spend.basis}.</p>
+        </section>
+
+        {/* This month */}
+        <section className="card p-6 lg:col-span-4">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink"><CalendarDays className="h-4 w-4 text-gray-400" /> This month</h2>
+          <dl className="mt-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <dt className="flex items-center gap-2 text-sm text-gray-500"><ArrowDownRight className="h-4 w-4 text-primary-600" /> Money in</dt>
+              <dd className="font-display text-xl font-semibold text-ink"><Money value={s.total_income} /></dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="flex items-center gap-2 text-sm text-gray-500"><ArrowUpRight className="h-4 w-4 text-red-500" /> Money out</dt>
+              <dd className="font-display text-xl font-semibold text-ink"><Money value={s.total_expenses} /></dd>
+            </div>
+            <div className="border-t border-line pt-4 flex items-center justify-between">
+              <dt className="text-sm font-medium text-ink">Kept</dt>
+              <dd className={`font-display text-2xl font-semibold ${s.net_savings >= 0 ? 'text-primary-700' : 'text-red-600'}`}>
+                <Money value={s.net_savings} />
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-primary-50 px-2.5 py-1 font-semibold text-primary-700">{s.savings_rate.toFixed(0)}% saved</span>
+            {s.expense_change !== 0 && (
+              <span className={`rounded-full px-2.5 py-1 font-semibold ${s.expense_change > 0 ? 'bg-red-50 text-red-700' : 'bg-primary-50 text-primary-700'}`}>
+                Spending {s.expense_change > 0 ? 'up' : 'down'} {Math.abs(s.expense_change).toFixed(0)}% vs last month
+              </span>
+            )}
+          </div>
+        </section>
       </div>
+
+      {/* Today's insight */}
+      {(() => {
+        const weakest = [...data.zen.factors].sort((a, b) => a.points / a.max - b.points / b.max)[0];
+        return weakest && weakest.points < weakest.max ? (
+          <div className="flex flex-wrap items-center gap-4 rounded-3xl border border-lilac-200 bg-lilac-50 px-6 py-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-lilac-500 text-white"><Lightbulb className="h-5 w-5" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-lilac-600">Today's insight · {weakest.label}</p>
+              <p className="mt-0.5 text-sm text-ink">{weakest.tip} Improving this adds up to {weakest.max - weakest.points} points to your Zen Score.</p>
+            </div>
+          </div>
+        ) : null;
+      })()}
+
+      {/* Trend + calendar */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        <Card title="Monthly spending" icon={BarChart3} className="lg:col-span-8"
+          action={<span className="text-xs text-gray-400">Last 6 months</span>}>
+          {trend.length === 0 ? (
+            <EmptyState icon={BarChart3} title="No spending yet" text="Your month-by-month spending will appear here." />
+          ) : (
+            <div className="h-64" role="img" aria-label="Bar chart of monthly spending">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trend} margin={{ top: 8, right: 4, left: -12, bottom: 0 }} barCategoryGap="28%">
+                  <CartesianGrid vertical={false} stroke="#efebe3" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#7a746b', fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a8a197', fontSize: 11 }}
+                    tickFormatter={(v: number) => (v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`)} />
+                  <Tooltip content={<TrendTip />} cursor={{ fill: 'rgba(15,35,29,0.04)' }} />
+                  <Bar dataKey="amount" fill="#2f8468" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+        <Card title="Spending calendar" icon={CalendarDays} className="lg:col-span-4">
+          <SpendingCalendar days={data.daily} />
+        </Card>
+      </div>
+
+      {/* Categories, budgets, goals */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card title="Where it went" icon={Receipt} action={<span className="text-xs text-gray-400">This month</span>}>
+          {data.categories.length === 0 ? (
+            <EmptyState icon={Receipt} title="Nothing spent yet" text="Top categories show up as you spend." />
+          ) : (
+            <ul className="space-y-4">
+              {data.categories.slice(0, 5).map((c) => (
+                <li key={c.category}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-ink">{c.category}</span>
+                    <span className="text-gray-600"><Money value={c.amount} cents={false} /></span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100">
+                    <div className="h-full rounded-full bg-primary-500" style={{ width: `${(c.amount / topCat) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Budgets" icon={Wallet}
+          action={<button onClick={() => onNavigate('budget')} className="flex items-center text-xs font-semibold text-primary-700 hover:text-primary-900">Manage <ChevronRight className="h-3.5 w-3.5" /></button>}>
+          {data.budgets.length === 0 ? (
+            <EmptyState icon={Wallet} title="No budgets yet" action={<button onClick={() => onNavigate('budget')} className="btn-ghost">Set a budget</button>} />
+          ) : (
+            <ul className="space-y-4">
+              {data.budgets.map((b) => (
+                <li key={b.id}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-ink">{b.category}</span>
+                    <span className="text-gray-500">
+                      <Money value={b.current_spent} cents={false} className="text-ink font-medium" /> / <Money value={b.monthly_limit} cents={false} />
+                    </span>
+                  </div>
+                  <Progress value={b.current_spent} max={b.monthly_limit} className="mt-1.5" />
+                  {b.remaining < 0 && <p className="mt-1 text-xs font-medium text-red-600">Over by {formatMoney(-b.remaining, { cents: false })}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Goals" icon={Target}
+          action={<button onClick={() => onNavigate('savings')} className="flex items-center text-xs font-semibold text-primary-700 hover:text-primary-900">All goals <ChevronRight className="h-3.5 w-3.5" /></button>}>
+          {data.goals.length === 0 ? (
+            <EmptyState icon={PiggyBank} title="No goals yet" action={<button onClick={() => onNavigate('savings')} className="btn-ghost">Create a goal</button>} />
+          ) : (
+            <ul className="space-y-4">
+              {data.goals.map((g) => (
+                <li key={g.id} className="flex items-center gap-3">
+                  <ScoreMini pct={g.progress} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">{g.name}</p>
+                    <p className="text-xs text-gray-500">
+                      <Money value={g.current_amount} cents={false} /> of <Money value={g.target_amount} cents={false} />
+                      {g.deadline && ` · by ${new Date(g.deadline).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      {/* Recent + subscriptions */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        <Card title="Recent activity" icon={Receipt} className="lg:col-span-8"
+          action={<button onClick={() => onNavigate('transactions')} className="flex items-center text-xs font-semibold text-primary-700 hover:text-primary-900">See all <ChevronRight className="h-3.5 w-3.5" /></button>}>
+          {isNew ? (
+            <EmptyState icon={Receipt} title="No transactions yet" text='Type "spent 12 on lunch" in the bar at the top, or add one manually.'
+              action={<button onClick={() => onNavigate('transactions')} className="btn-primary">Add a transaction</button>} />
+          ) : (
+            <ul className="-mx-2 divide-y divide-line">
+              {data.recent.map((t) => (
+                <li key={t.id} className="flex items-center gap-3 px-2 py-3">
+                  <CategoryTile name={t.category} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">{t.description || t.category}</p>
+                    <p className="text-xs text-gray-500">{t.category} · {t.date ? relativeDay(t.date) : ''}{t.source === 'bank' ? ' · Bank' : ''}</p>
+                  </div>
+                  <Money value={t.type === 'income' ? t.amount : -t.amount} sign
+                    className={`text-sm font-semibold ${t.type === 'income' ? 'text-primary-700' : 'text-ink'}`} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Subscriptions" icon={Repeat} className="lg:col-span-4 border-lilac-100"
+          action={data.recurring.items.length > 0 ? <span className="text-xs text-gray-500"><Money value={data.recurring.monthly_total} cents={false} />/mo</span> : undefined}>
+          {data.recurring.items.length === 0 ? (
+            <EmptyState icon={Repeat} title="None detected yet" text="Zenty spots repeating monthly charges automatically after a couple of months." />
+          ) : (
+            <ul className="space-y-3">
+              {data.recurring.items.map((r) => (
+                <li key={r.name} className="flex items-center gap-3">
+                  <CategoryTile name={r.name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">{r.name}</p>
+                    <p className="text-xs text-gray-500">Next ~{new Date(r.next_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                  </div>
+                  <Money value={r.amount} className="text-sm font-semibold text-ink" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function ScoreMini({ pct }: { pct: number }) {
+  const r = 16;
+  const c = 2 * Math.PI * r;
+  const p = Math.max(0, Math.min(100, pct)) / 100;
+  return (
+    <div className="relative h-11 w-11 shrink-0">
+      <svg viewBox="0 0 40 40" className="h-11 w-11 -rotate-90" aria-hidden="true">
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#efebe3" strokeWidth="4" />
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#2f8468" strokeWidth="4" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p)} />
+      </svg>
+      <span className="num absolute inset-0 flex items-center justify-center text-[10px] font-bold text-ink">{Math.round(pct)}%</span>
     </div>
   );
 }

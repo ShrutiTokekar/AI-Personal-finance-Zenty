@@ -10,8 +10,8 @@ interface Props {
 
 function Card({ icon: Icon, title, children, danger }: { icon: typeof Bell; title: string; children: ReactNode; danger?: boolean }) {
   return (
-    <section className={`rounded-2xl bg-white border p-6 ${danger ? 'border-red-200' : 'border-orange-100'}`}>
-      <h2 className={`flex items-center gap-2 text-lg font-bold ${danger ? 'text-red-700' : 'text-amber-950'}`}>
+    <section className={`rounded-2xl bg-white border p-6 ${danger ? 'border-red-200' : 'border-line'}`}>
+      <h2 className={`flex items-center gap-2 text-lg font-bold ${danger ? 'text-red-700' : 'text-ink'}`}>
         <Icon className="h-5 w-5" /> {title}
       </h2>
       <div className="mt-4">{children}</div>
@@ -19,8 +19,8 @@ function Card({ icon: Icon, title, children, danger }: { icon: typeof Bell; titl
   );
 }
 
-const field = 'w-full rounded-xl border border-orange-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400';
-const primary = 'rounded-xl bg-orange-500 px-4 py-2.5 font-semibold text-white hover:bg-orange-600 disabled:opacity-60';
+const field = 'w-full rounded-xl border border-line px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-400';
+const primary = 'rounded-xl bg-ink px-4 py-2.5 font-semibold text-white hover:bg-ink-700 disabled:opacity-60';
 
 function Status({ s }: { s: { ok: boolean; text: string } | null }) {
   if (!s) return null;
@@ -103,23 +103,23 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-3xl font-bold text-amber-950">Settings</h1>
-        <p className="mt-1 text-stone-600">Manage your profile, alerts and security.</p>
+        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-ink">Settings</h1>
+        <p className="mt-1 text-gray-600">Manage your profile, alerts and security.</p>
       </div>
 
       <form onSubmit={saveProfile} className="space-y-6">
         <Card icon={UserIcon} title="Profile">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-sm font-medium text-stone-700">Name</span>
+              <span className="text-sm font-medium text-gray-700">Name</span>
               <input className={field + ' mt-1'} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-stone-700">Email</span>
-              <input className={field + ' mt-1 bg-stone-50 text-stone-500'} value={user.email} disabled />
+              <span className="text-sm font-medium text-gray-700">Email</span>
+              <input className={field + ' mt-1 bg-gray-50 text-gray-500'} value={user.email} disabled />
             </label>
           </div>
-          <p className="mt-3 text-sm text-stone-500">
+          <p className="mt-3 text-sm text-gray-500">
             {user.email_verified ? '✓ Email verified' : 'Email not verified yet'} · {user.google_linked ? 'Google sign-in linked' : 'Email & password sign-in'}
           </p>
         </Card>
@@ -127,17 +127,17 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
         <Card icon={Bell} title="Stock alerts">
           <label className="flex items-center justify-between gap-4">
             <span>
-              <span className="font-medium text-stone-900">Daily email when my stocks move</span>
-              <span className="block text-sm text-stone-500">Sent after market close on weekdays, only when something moved enough.</span>
+              <span className="font-medium text-gray-900">Daily email when my stocks move</span>
+              <span className="block text-sm text-gray-500">Sent after market close on weekdays, only when something moved enough.</span>
             </span>
-            <input type="checkbox" className="h-5 w-5 accent-orange-500" checked={alerts} onChange={(e) => setAlerts(e.target.checked)} />
+            <input type="checkbox" className="h-5 w-5 accent-primary-600" checked={alerts} onChange={(e) => setAlerts(e.target.checked)} />
           </label>
           <label className="mt-4 block">
-            <span className="text-sm font-medium text-stone-700">Alert when a stock moves at least <strong>{threshold}%</strong> in a day</span>
+            <span className="text-sm font-medium text-gray-700">Alert when a stock moves at least <strong>{threshold}%</strong> in a day</span>
             <input type="range" min={0.5} max={15} step={0.5} value={threshold} disabled={!alerts}
-              onChange={(e) => setThreshold(Number(e.target.value))} className="mt-2 w-full accent-orange-500" />
+              onChange={(e) => setThreshold(Number(e.target.value))} className="mt-2 w-full accent-primary-600" />
           </label>
-          {!user.email_verified && <p className="mt-2 text-sm text-amber-700">Verify your email to receive alerts.</p>}
+          {!user.email_verified && <p className="mt-2 text-sm text-primary-700">Verify your email to receive alerts.</p>}
         </Card>
 
         <div>
@@ -161,10 +161,10 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
 
       <Card icon={ShieldAlert} title="Privacy & sessions">
         <div className="flex flex-wrap gap-3">
-          <button onClick={exportData} className="inline-flex items-center gap-2 rounded-xl border border-orange-200 px-4 py-2.5 font-semibold text-orange-900 hover:bg-orange-50">
+          <button onClick={exportData} className="inline-flex items-center gap-2 rounded-xl border border-line px-4 py-2.5 font-semibold text-ink hover:bg-gray-50">
             <Download className="h-4 w-4" /> Download my data
           </button>
-          <button onClick={signOutEverywhere} className="inline-flex items-center gap-2 rounded-xl border border-orange-200 px-4 py-2.5 font-semibold text-orange-900 hover:bg-orange-50">
+          <button onClick={signOutEverywhere} className="inline-flex items-center gap-2 rounded-xl border border-line px-4 py-2.5 font-semibold text-ink hover:bg-gray-50">
             <LogOut className="h-4 w-4" /> Sign out of all devices
           </button>
         </div>
@@ -172,7 +172,7 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
 
       <Card icon={Trash2} title="Delete account" danger>
         <form onSubmit={deleteAccount} className="space-y-3">
-          <p className="text-sm text-stone-600">
+          <p className="text-sm text-gray-600">
             Permanently deletes your account, transactions, budgets, goals and stocks, and revokes all bank connections.
             This can't be undone.
           </p>

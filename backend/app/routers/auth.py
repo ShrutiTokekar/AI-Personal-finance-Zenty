@@ -168,6 +168,7 @@ def public_config():
     return {
         "google_client_id": settings.google_client_id or None,
         "bank_linking": bool(settings.plaid_client_id and settings.plaid_secret),
+        "email_enabled": bool(settings.resend_api_key),
     }
 
 
