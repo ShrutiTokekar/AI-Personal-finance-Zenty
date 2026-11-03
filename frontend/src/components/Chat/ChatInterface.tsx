@@ -15,7 +15,7 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: "Hi! I'm your AI finance assistant. Try asking me things like 'I spent $50 on groceries' or 'Show me my spending this month'",
+      text: "Hi! I'm your Zenty assistant. Try 'I spent $50 on groceries', 'show my budgets', or 'how are my stocks?'",
       sender: 'bot',
       timestamp: new Date(),
     },
@@ -82,7 +82,7 @@ export default function ChatInterface() {
     <div className="flex flex-col h-[calc(100vh-12rem)] bg-white rounded-xl shadow-sm border border-gray-100">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-xl font-semibold text-gray-900">AI Assistant</h2>
+        <h2 className="text-xl font-semibold text-gray-900">Zenty Assistant</h2>
         <p className="text-sm text-gray-600 mt-1">Chat naturally about your finances</p>
       </div>
 

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, TrendingDown, Plus, Trash2, DollarSign, Calendar, RefreshCw } from 'lucide-react';
-import { stocksAPI, Stock } from '../../services/api';
+import { stocksAPI, type Stock } from '../../services/api';
 import AddStockModal from './AddStockModal';
 
 interface StockWithPrice extends Stock {
@@ -30,6 +30,7 @@ export default function StocksPage() {
       // The backend now automatically fetches real prices
       const response = await stocksAPI.getAll();
       setStocks(response.data.stocks);
+      fetchStockPrices(response.data.stocks);
     } catch (error) {
       console.error('Failed to load stocks:', error);
       setStocks([]);
@@ -40,35 +41,28 @@ export default function StocksPage() {
 
 
   const fetchStockPrices = async (stocksData: Stock[]) => {
+    if (stocksData.length === 0) return;
     try {
-      // Get unique symbols
-      const symbols = [...new Set(stocksData.map(s => s.symbol))];
-      
-      // Fetch prices from Alpha Vantage or a free API
-      // For demo purposes, we'll simulate prices
-      const stocksWithPrices = stocksData.map(stock => {
-        // Simulate price (in production, fetch from real API)
-        const priceChange = (Math.random() - 0.5) * 20; // -10 to +10
-        const current_price = stock.purchase_price + priceChange;
-        const market_value = current_price * stock.shares;
+      const symbols = [...new Set(stocksData.map((s) => s.symbol))];
+      const { data } = await stocksAPI.getPrices(symbols);
+      const stocksWithPrices = stocksData.map((stock) => {
+        const quote = data.prices[stock.symbol];
+        if (!quote) return stock;
+        const market_value = quote.current_price * stock.shares;
         const total_gain_loss = market_value - stock.total_cost;
-        const gain_loss_percent = (total_gain_loss / stock.total_cost) * 100;
-        
         return {
           ...stock,
-          current_price,
-          price_change: priceChange,
-          price_change_percent: (priceChange / stock.purchase_price) * 100,
+          current_price: quote.current_price,
+          price_change: quote.price_change,
+          price_change_percent: quote.price_change_percent,
           market_value,
           total_gain_loss,
-          gain_loss_percent,
+          gain_loss_percent: stock.total_cost ? (total_gain_loss / stock.total_cost) * 100 : 0,
         };
       });
-
       setStocks(stocksWithPrices);
-    } catch (error) {
-      console.error('Failed to fetch prices:', error);
-      setStocks(stocksData);
+    } catch {
+      // Keep showing holdings without live prices if quotes are unavailable.
     }
   };
 
@@ -325,9 +319,8 @@ export default function StocksPage() {
       {/* Info Note */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-800">
-          <strong>Note:</strong> Stock prices are simulated for demo purposes. In production, 
-          integrate with a real-time stock API like Alpha Vantage, Yahoo Finance, or IEX Cloud 
-          for accurate pricing data.
+          <strong>Note:</strong> Prices may be delayed by up to 15 minutes. Turn on daily stock
+          alert emails in Settings to hear when your holdings move.
         </p>
       </div>
 

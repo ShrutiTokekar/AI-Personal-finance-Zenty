@@ -41,10 +41,10 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Analytics & Insights</h1>
-        <p className="mt-2 text-gray-600">AI-powered predictions and recommendations</p>
+        <p className="mt-2 text-gray-600">Predictions and tips based on your own spending</p>
       </div>
 
-      {/* AI Advice */}
+      {/* Advice */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -105,7 +105,7 @@ export default function AnalyticsPage() {
             Not Enough Data
           </h3>
           <p className="text-gray-600">
-            Add at least 30 transactions to see AI-powered predictions
+            Add at least one full month of expenses to see predictions
           </p>
         </div>
       )}

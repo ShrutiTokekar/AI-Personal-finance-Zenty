@@ -1,8 +1,8 @@
 // frontend/src/components/Savings/SavingsPage.tsx
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Plus, TrendingUp, Calendar, Trash2, DollarSign } from 'lucide-react';
-import { savingsAPI, SavingsGoal } from '../../services/api';
+import { Target, Plus, Calendar, Trash2, DollarSign } from 'lucide-react';
+import { savingsAPI, type SavingsGoal } from '../../services/api';
 import CreateGoalModal from './CreateGoalModal';
 import ContributeModal from './ContributeModal';
 

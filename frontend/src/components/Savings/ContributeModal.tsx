@@ -1,7 +1,7 @@
 // frontend/src/components/Savings/ContributeModal.tsx
 import { useState } from 'react';
 import { X, DollarSign } from 'lucide-react';
-import { savingsAPI, SavingsGoal } from '../../services/api';
+import { savingsAPI, type SavingsGoal } from '../../services/api';
 
 interface ContributeModalProps {
   goal: SavingsGoal;

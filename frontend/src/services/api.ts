@@ -1,53 +1,119 @@
 // frontend/src/services/api.ts
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
-
-// Try using the full URL instead of relative
-const API_BASE_URL = 'https://shrutitokekar-zenty-finance.hf.space/api';
-
+// Frontend and API are served from the same origin (/api), so session cookies
+// stay first-party, httpOnly and SameSite=Strict. In dev, Vite proxies /api.
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: '/api',
+  withCredentials: true,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'zenty',
   },
-  timeout: 60000, // 10 second timeout
 });
 
-// Add response interceptor to log errors
+function readCookie(name: string): string | null {
+  const match = document.cookie.split('; ').find((c) => c.startsWith(name + '='));
+  return match ? decodeURIComponent(match.split('=')[1]) : null;
+}
+
+// Attach the CSRF token (double-submit cookie) to every request.
+// Nothing about requests or financial data is logged to the console.
+api.interceptors.request.use((config) => {
+  const csrf = readCookie('zenty_csrf');
+  if (csrf) config.headers.set('X-CSRF-Token', csrf);
+  return config;
+});
+
 api.interceptors.response.use(
-  (response) => {
-    console.log('✅ API Response:', response.config.url, response.status);
-    return response;
-  },
-  (error) => {
-    console.error('❌ API Error:');
-    console.error('URL:', error.config?.url);
-    console.error('Method:', error.config?.method);
-    console.error('Data:', error.config?.data);
-    console.error('Error:', error.message);
-    if (error.response) {
-      console.error('Response Status:', error.response.status);
-      console.error('Response Data:', error.response.data);
-    } else if (error.request) {
-      console.error('No response received');
-      console.error('Request:', error.request);
+  (r) => r,
+  (error: AxiosError) => {
+    if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/')) {
+      window.dispatchEvent(new Event('zenty:signed-out'));
     }
     return Promise.reject(error);
   }
 );
 
-// Add request interceptor to log requests
-api.interceptors.request.use(
-  (config) => {
-    console.log('🚀 API Request:', config.method?.toUpperCase(), config.url);
-    console.log('Data:', config.data);
-    return config;
-  },
-  (error) => {
-    console.error('Request Error:', error);
-    return Promise.reject(error);
-  }
-);
+/** Human-friendly message from an API error. */
+export function errorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  const e = err as AxiosError<{ detail?: string }>;
+  if (e?.response?.data?.detail && typeof e.response.data.detail === 'string') return e.response.data.detail;
+  if (e?.code === 'ECONNABORTED') return 'The request timed out. Please try again.';
+  if (e?.message === 'Network Error') return "Can't reach Zenty right now. Check your connection.";
+  return fallback;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  email_verified: boolean;
+  has_password: boolean;
+  google_linked: boolean;
+  stock_alerts: boolean;
+  stock_alert_threshold: number;
+  created_at: string;
+}
+
+export interface PublicConfig {
+  google_client_id: string | null;
+  bank_linking: boolean;
+}
+
+export const authAPI = {
+  config: () => api.get<PublicConfig>('/auth/config'),
+  me: () => api.get<{ user: User }>('/auth/me'),
+  signup: (name: string, email: string, password: string) =>
+    api.post<{ user: User }>('/auth/signup', { name, email, password }),
+  login: (email: string, password: string) => api.post<{ user: User }>('/auth/login', { email, password }),
+  google: (credential: string) => api.post<{ user: User; new_user: boolean }>('/auth/google', { credential }),
+  logout: () => api.post('/auth/logout'),
+  logoutEverywhere: () => api.post('/auth/logout-everywhere'),
+  verifyEmail: (token: string) => api.post('/auth/verify-email', { token }),
+  resendVerification: () => api.post('/auth/resend-verification'),
+  forgotPassword: (email: string) => api.post<{ message: string }>('/auth/forgot-password', { email }),
+  resetPassword: (token: string, password: string) => api.post('/auth/reset-password', { token, password }),
+};
+
+export const accountAPI = {
+  updateProfile: (data: Partial<Pick<User, 'name' | 'stock_alerts' | 'stock_alert_threshold'>>) =>
+    api.patch<{ user: User }>('/account/profile', data),
+  changePassword: (current_password: string | null, new_password: string) =>
+    api.post('/account/password', { current_password, new_password }),
+  exportData: () => api.get('/account/export'),
+  deleteAccount: (confirm: string, password: string | null) =>
+    api.delete('/account', { data: { confirm, password } }),
+};
+
+export interface BankAccount {
+  id: number;
+  item_id: number;
+  name: string;
+  mask: string | null;
+  type: string;
+  subtype: string | null;
+  current_balance: number | null;
+  available_balance: number | null;
+  currency: string;
+}
+
+export interface BankItem {
+  id: number;
+  institution: string;
+  last_synced: string | null;
+  accounts: BankAccount[];
+}
+
+export const bankAPI = {
+  linkToken: () => api.post<{ link_token: string }>('/bank/link-token'),
+  exchange: (public_token: string) =>
+    api.post<{ success: boolean; institution: string; imported: number }>('/bank/exchange', { public_token }),
+  accounts: () => api.get<{ items: BankItem[]; total_assets: number; total_debt: number }>('/bank/accounts'),
+  sync: () => api.post<{ success: boolean; imported: number; errors: { institution: string; error: string }[] }>('/bank/sync'),
+  unlink: (itemId: number) => api.delete(`/bank/items/${itemId}`),
+};
 
 export interface Transaction {
   id?: number;
@@ -56,6 +122,7 @@ export interface Transaction {
   description?: string;
   date?: string;
   type: 'income' | 'expense';
+  source?: 'manual' | 'bank';
 }
 
 export interface Summary {
@@ -181,7 +248,7 @@ export const stocksAPI = {
   
   // New methods for real-time prices
   getPrice: (symbol: string) => 
-    api.get<StockPrice>(`/stocks/price/${symbol}`),
+    api.get<StockPrice>(`/stocks/price/${encodeURIComponent(symbol)}`),
   
   getPrices: (symbols: string[]) => 
     api.post<{ prices: Record<string, StockPrice> }>('/stocks/prices', symbols),
@@ -193,11 +260,11 @@ export const stocksAPI = {
   
   search: (query: string) => 
     api.get<{ results: Array<{ symbol: string; name: string; exchange: string; type: string }> }>(
-      `/stocks/search?query=${query}`
+      `/stocks/search?query=${encodeURIComponent(query)}`
     ),
   
-  validate: (symbol: string) => 
-    api.get<{ symbol: string; valid: boolean }>(`/stocks/validate/${symbol}`),
+  validate: (symbol: string) =>
+    api.get<{ symbol: string; valid: boolean }>(`/stocks/validate/${encodeURIComponent(symbol)}`),
 };
 
 export const transactionAPI = {

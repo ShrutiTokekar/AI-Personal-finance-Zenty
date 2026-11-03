@@ -1,7 +1,7 @@
 // frontend/src/components/Budget/EditBudgetModal.tsx
 import { useState } from 'react';
 import { X, Edit2 } from 'lucide-react';
-import { budgetAPI, Budget } from '../../services/api';
+import { budgetAPI, type Budget } from '../../services/api';
 
 interface EditBudgetModalProps {
   budget: Budget;

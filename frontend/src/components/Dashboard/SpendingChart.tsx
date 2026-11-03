@@ -1,16 +1,7 @@
 // frontend/src/components/Dashboard/SpendingChart.tsx
 import { useState, useEffect } from 'react';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  Legend 
-} from 'recharts';
-import { analyticsAPI, Trend } from '../../services/api';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { analyticsAPI, type Trend } from '../../services/api';
 import { TrendingUp } from 'lucide-react';
 
 export default function SpendingChart() {

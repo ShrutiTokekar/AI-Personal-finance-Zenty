@@ -1,7 +1,7 @@
 // frontend/src/components/Dashboard/CategoryPieChart.tsx
 import { useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { analyticsAPI, CategoryBreakdown } from '../../services/api';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { analyticsAPI, type CategoryBreakdown } from '../../services/api';
 import { PieChartIcon } from 'lucide-react';
 
 const COLORS = [
@@ -115,7 +115,7 @@ export default function CategoryPieChart() {
                 dataKey="amount"
                 nameKey="category"
               >
-                {data.map((entry, index) => (
+                {data.map((_entry, index) => (
                   <Cell 
                     key={`cell-${index}`} 
                     fill={COLORS[index % COLORS.length]}
