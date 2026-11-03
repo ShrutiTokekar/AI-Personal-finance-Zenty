@@ -287,12 +287,12 @@ export default function Dashboard({ user, onNavigate }: Props) {
             <div className="h-64" role="img" aria-label="Bar chart of monthly spending">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={trend} margin={{ top: 8, right: 4, left: -12, bottom: 0 }} barCategoryGap="28%">
-                  <CartesianGrid vertical={false} stroke="#efebe3" />
+                  <CartesianGrid vertical={false} stroke="#ece5d3" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#7a746b', fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a8a197', fontSize: 11 }}
                     tickFormatter={(v: number) => (v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`)} />
-                  <Tooltip content={<TrendTip />} cursor={{ fill: 'rgba(15,35,29,0.04)' }} />
-                  <Bar dataKey="amount" fill="#2f8468" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                  <Tooltip content={<TrendTip />} cursor={{ fill: 'rgba(31,43,24,0.04)' }} />
+                  <Bar dataKey="amount" fill="#6c914c" radius={[6, 6, 0, 0]} maxBarSize={48} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -425,8 +425,8 @@ function ScoreMini({ pct }: { pct: number }) {
   return (
     <div className="relative h-11 w-11 shrink-0">
       <svg viewBox="0 0 40 40" className="h-11 w-11 -rotate-90" aria-hidden="true">
-        <circle cx="20" cy="20" r={r} fill="none" stroke="#efebe3" strokeWidth="4" />
-        <circle cx="20" cy="20" r={r} fill="none" stroke="#2f8468" strokeWidth="4" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p)} />
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#ece5d3" strokeWidth="4" />
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#6c914c" strokeWidth="4" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p)} />
       </svg>
       <span className="num absolute inset-0 flex items-center justify-center text-[10px] font-bold text-ink">{Math.round(pct)}%</span>
     </div>

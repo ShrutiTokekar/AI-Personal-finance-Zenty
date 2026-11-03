@@ -29,7 +29,7 @@ import {
   X,
 } from 'lucide-react';
 import { LogoMark } from '../ui';
-import ZenGarden from './ZenGarden';
+import RakeRoad from './RakeRoad';
 
 interface Props {
   onSignIn: () => void;
@@ -59,7 +59,7 @@ function RotatingWord() {
           animate={{ y: '0%', opacity: 1 }}
           exit={{ y: '-100%', opacity: 0 }}
           transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          className="bg-gradient-to-r from-saffron-300 via-saffron-200 to-matcha-300 bg-clip-text text-transparent italic"
+          className="bg-gradient-to-r from-saffron-300 via-saffron-200 to-cream bg-clip-text text-transparent italic"
         >
           {WORDS[i]}
         </motion.span>
@@ -158,7 +158,7 @@ function HeroMockup() {
               <defs>
                 <linearGradient id="heroGrad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#f7c95e" />
-                  <stop offset="100%" stopColor="#4c9f81" />
+                  <stop offset="100%" stopColor="#85a866" />
                 </linearGradient>
               </defs>
             </svg>
@@ -352,55 +352,57 @@ export default function LandingPage({ onSignIn, onSignUp }: Props) {
         </AnimatePresence>
       </header>
 
-      {/* Hero: zen garden being raked, with financial steps appearing in the grooves */}
-      <section id="top" className="relative flex min-h-[1080px] items-start overflow-hidden bg-ink pt-32 pb-24 sm:min-h-[100svh] sm:items-center sm:pt-28">
-        <ZenGarden />
-        <div className="relative mx-auto max-w-3xl px-5 text-center">
-          <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-ink/60 px-3 py-1.5 text-sm text-white/80 backdrop-blur">
-            <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron-300 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-saffron-300" /></span>
-            Your calm money companion
-          </motion.p>
-          <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.7 }}
-            className="mt-6 font-display text-5xl font-semibold leading-[1.02] tracking-tight text-white sm:text-7xl">
-            Money, minus<br />the <RotatingWord />
-          </motion.h1>
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.7 }}
-            className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-white/70">
-            Zenty brings your spending, budgets, goals, investments and bank accounts into one quiet, private place,
-            and tells you each morning exactly what's safe to spend.
-          </motion.p>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.7 }}
-            className="mt-9 flex flex-wrap justify-center gap-3">
-            <button onClick={onSignUp}
-              className="group inline-flex items-center gap-2 rounded-2xl bg-matcha-300 px-6 py-3.5 font-semibold text-ink shadow-[0_10px_40px_-10px_rgba(205,236,133,0.6)] transition hover:bg-matcha-200">
-              Start free <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </button>
-            <a href="#about" className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-ink/40 px-6 py-3.5 font-semibold text-white/90 backdrop-blur transition hover:bg-white/5">
-              Learn more
-            </a>
-          </motion.div>
-          <motion.ul initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
-            className="mt-10 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-white/55">
-            <li className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-matcha-300" /> Bank-grade encryption</li>
-            <li className="flex items-center gap-1.5"><Lock className="h-4 w-4 text-matcha-300" /> Your data is never sold</li>
-            <li className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-saffron-300" /> Free to start</li>
-          </motion.ul>
+      {/* Hero: a rake draws a winding road; each pin opens a Zenty feature */}
+      <section id="top" className="relative overflow-hidden bg-primary-600 pt-28 pb-16 sm:pt-32 lg:flex lg:min-h-[100svh] lg:items-center lg:pb-20">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_70%_40%,#7ea35c,transparent_70%)]" />
+          {/* concentric raked rings and diagonal sand bands, echoing the Zenty logo */}
+          <svg className="absolute -right-40 top-1/2 h-[1100px] w-[1100px] -translate-y-1/2 opacity-[0.07]" viewBox="0 0 100 100">
+            {Array.from({ length: 9 }).map((_, k) => (
+              <circle key={k} cx="50" cy="50" r={6 + k * 5.2} fill="none" stroke="#edead1" strokeWidth="1.6" />
+            ))}
+          </svg>
+          <div className="absolute -left-1/4 top-0 h-full w-[38%] -skew-x-[28deg] bg-sand/[0.06]" />
+          <div className="absolute left-[38%] top-0 h-full w-[10%] -skew-x-[28deg] bg-sand/[0.05]" />
+          <div className="grain absolute inset-0" />
+        </div>
+
+        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_1.05fr] lg:gap-6">
+          <div className="text-center lg:text-left">
+            <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+              className="inline-flex items-center gap-2 rounded-full border border-cream/30 bg-ink/15 px-3 py-1.5 text-sm text-cream backdrop-blur">
+              <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron-300 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-saffron-300" /></span>
+              Your calm money companion
+            </motion.p>
+            <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.7 }}
+              className="mt-6 font-display text-5xl font-semibold leading-[1.02] tracking-tight text-[#fbf8ec] sm:text-6xl xl:text-7xl">
+              Money, minus<br />the <RotatingWord />
+            </motion.h1>
+            <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.7 }}
+              className="mx-auto mt-6 max-w-lg text-lg leading-relaxed text-[#fbf8ec]/90 lg:mx-0">
+              Zenty brings your spending, budgets, goals, investments and bank accounts into one quiet, private place,
+              and tells you each morning exactly what's safe to spend.
+            </motion.p>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.7 }}
+              className="mt-9 flex flex-wrap justify-center gap-3 lg:justify-start">
+              <button onClick={onSignUp}
+                className="group inline-flex items-center gap-2 rounded-2xl bg-ink px-6 py-3.5 font-semibold text-cream shadow-lift transition hover:bg-ink-700">
+                Start free <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </button>
+              <a href="#about" className="inline-flex items-center gap-2 rounded-2xl border border-cream/40 px-6 py-3.5 font-semibold text-cream transition hover:bg-cream/10">
+                Learn more
+              </a>
+            </motion.div>
+            <motion.ul initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+              className="mt-10 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-[#fbf8ec]/85 lg:justify-start">
+              <li className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-cream" /> Bank-grade encryption</li>
+              <li className="flex items-center gap-1.5"><Lock className="h-4 w-4 text-cream" /> Your data is never sold</li>
+              <li className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-saffron-300" /> Free to start</li>
+            </motion.ul>
+          </div>
+          <RakeRoad />
         </div>
       </section>
-
-      {/* Marquee */}
-      <div className="overflow-hidden border-y border-line bg-white py-5" aria-hidden="true">
-        <div className="marquee-track flex w-max gap-12 whitespace-nowrap font-display text-2xl text-gray-300">
-          {[0, 1].map((k) => (
-            <div key={k} className="flex gap-12">
-              {['Zen Score', 'Safe to spend', 'Budgets', 'Savings goals', 'Stock alerts', 'Bank sync', 'Subscriptions', 'Privacy mode'].map((w) => (
-                <span key={w} className="flex items-center gap-12">{w}<Leaf className="h-5 w-5 text-primary-300" /></span>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* About */}
       <section id="about" className="mx-auto max-w-5xl px-4 py-28 sm:px-8 sm:py-36">

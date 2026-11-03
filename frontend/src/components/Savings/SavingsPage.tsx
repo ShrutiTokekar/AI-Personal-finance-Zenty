@@ -12,8 +12,8 @@ function GoalRing({ pct, done }: { pct: number; done: boolean }) {
   return (
     <div className="relative h-20 w-20 shrink-0">
       <svg viewBox="0 0 80 80" className="h-20 w-20 -rotate-90" aria-hidden="true">
-        <circle cx="40" cy="40" r={r} fill="none" stroke="#efebe3" strokeWidth="7" />
-        <circle cx="40" cy="40" r={r} fill="none" stroke={done ? '#93c234' : '#2f8468'} strokeWidth="7" strokeLinecap="round"
+        <circle cx="40" cy="40" r={r} fill="none" stroke="#ece5d3" strokeWidth="7" />
+        <circle cx="40" cy="40" r={r} fill="none" stroke={done ? '#93c234' : '#6c914c'} strokeWidth="7" strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c * (1 - p)} style={{ transition: 'stroke-dashoffset .8s ease' }} />
       </svg>
       <span className="num absolute inset-0 flex items-center justify-center text-sm font-bold text-ink">

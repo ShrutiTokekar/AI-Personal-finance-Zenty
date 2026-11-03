@@ -131,7 +131,7 @@ export function ScoreRing({ score, size = 148, stroke = 12, children }: { score:
         <defs>
           <linearGradient id="zenGrad" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#f7c95e" />
-            <stop offset="100%" stopColor="#7bbea3" />
+            <stop offset="100%" stopColor="#a3c081" />
           </linearGradient>
         </defs>
       </svg>
@@ -179,7 +179,7 @@ export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={className} role="img" aria-label="Zenty">
       <defs>
-        <linearGradient id="zentyMarkG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#1c4a3d" /><stop offset="1" stopColor="#0b1c17" /></linearGradient>
+        <linearGradient id="zentyMarkG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#587d3e" /><stop offset="1" stopColor="#2f4024" /></linearGradient>
         <linearGradient id="zentyMarkZ" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f9d27c" /><stop offset="1" stopColor="#e5a432" /></linearGradient>
         <clipPath id="zentyMarkC"><rect width="64" height="64" rx="14" /></clipPath>
       </defs>
