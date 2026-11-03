@@ -18,6 +18,12 @@ const SAMPLES = 260;
 const widthAt = (t: number) => 60 - 42 * t; // wide near the viewer, narrow in the distance
 
 type Feature = 'piggy' | 'stock' | 'week' | 'budget' | 'safe';
+// Phones: three widgets, spread far apart along the lines.
+const COMPACT_PINS: { t: number; feature: Feature }[] = [
+  { t: 0.12, feature: 'piggy' },
+  { t: 0.5, feature: 'stock' },
+  { t: 0.86, feature: 'week' },
+];
 const PINS: { t: number; feature: Feature }[] = [
   { t: 0.1, feature: 'piggy' },
   { t: 0.3, feature: 'stock' },
@@ -168,6 +174,7 @@ interface Geo {
   left: string;
   right: string;
   pins: { x: number; y: number; side: 'left' | 'right'; feature: Feature; t: number }[];
+  compactPins: { x: number; y: number; side: 'left' | 'right'; feature: Feature; t: number }[];
 }
 
 export default function RakeRoad() {
@@ -208,15 +215,16 @@ export default function RakeRoad() {
       return { t, x: p.x, y: p.y, nx: -dy / len, ny: dx / len };
     });
     const line = (k: number) => pts.map((p, i) => `${i ? 'L' : 'M'}${(p.x + p.nx * widthAt(p.t) * k).toFixed(1)} ${(p.y + p.ny * widthAt(p.t) * k).toFixed(1)}`).join('');
-    const pins = PINS.map(({ t, feature }) => {
+    const place = (list: typeof PINS) => list.map(({ t, feature }) => {
       const p = path.getPointAtLength(L * t);
       return { x: p.x, y: p.y, side: (p.x >= VW / 2 ? 'left' : 'right') as 'left' | 'right', feature, t };
     });
-    setGeo({ left: line(1), right: line(-1), pins });
+    setGeo({ left: line(1), right: line(-1), pins: place(PINS), compactPins: place(COMPACT_PINS) });
   }, []);
 
   useEffect(() => {
     if (!geo) return;
+    const activePins = compact ? COMPACT_PINS : PINS;
     const path = guideRef.current!;
     const mask = maskRef.current!;
     const L = path.getTotalLength();
@@ -224,7 +232,7 @@ export default function RakeRoad() {
 
     if (reduce) {
       mask.setAttribute('stroke-dashoffset', '0');
-      setRevealed(PINS.length - 1);
+      setRevealed(activePins.length - 1);
       return;
     }
 
@@ -243,7 +251,7 @@ export default function RakeRoad() {
       roadRef.current?.setAttribute('opacity', String(fade));
 
       let pinIdx = -1;
-      PINS.forEach((pin, i) => { if (p >= pin.t) pinIdx = i; });
+      activePins.forEach((pin, i) => { if (p >= pin.t) pinIdx = i; });
       if (pinIdx !== lastPin) { lastPin = pinIdx; setRevealed(pinIdx); }
 
       const rake = rakeRef.current;
@@ -275,9 +283,9 @@ export default function RakeRoad() {
     if (wrapRef.current) io.observe(wrapRef.current);
     raf = requestAnimationFrame(frame);
     return () => { running = false; cancelAnimationFrame(raf); io.disconnect(); };
-  }, [geo, reduce]);
+  }, [geo, reduce, compact]);
 
-  const pins = useMemo(() => geo?.pins || [], [geo]);
+  const pins = useMemo(() => (compact ? geo?.compactPins : geo?.pins) || [], [geo, compact]);
 
   return (
     <div ref={wrapRef} className="relative mx-auto aspect-[600/760] w-full max-w-[460px] lg:max-w-[min(500px,calc((100svh-150px)*0.79))] text-[12px] sm:text-[13px]" aria-hidden="true">
@@ -328,12 +336,12 @@ export default function RakeRoad() {
                   <span className="relative h-2.5 w-2.5 rounded-full bg-saffron-500" />
                 </span>
               </motion.div>
-              {!(compact && (pin.feature === 'budget' || pin.feature === 'safe')) && (
+              {(
                 <motion.span className="absolute z-[5] h-[1.5px] bg-[#f6f2e2]/80"
                   style={pin.side === 'right' ? { left: `calc(${xPct}% + 10px)`, top: `${yPct}%`, width: 14, originX: 0 } : { right: `calc(${100 - xPct}% + 10px)`, top: `${yPct}%`, width: 14, originX: 1 }}
                   initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} exit={{ opacity: 0 }} transition={{ delay: 0.15, duration: 0.3 }} />
               )}
-              {!(compact && (pin.feature === 'budget' || pin.feature === 'safe')) && <motion.div className="absolute z-20 w-[47%] -translate-y-1/2"
+              {<motion.div className="absolute z-20 w-[47%] -translate-y-1/2"
                 style={pin.side === 'right' ? { left: `calc(${xPct}% + 24px)`, top: `${yPct}%` } : { right: `calc(${100 - xPct}% + 24px)`, top: `${yPct}%` }}
                 initial={{ opacity: 0, x: pin.side === 'right' ? -10 : 10, scale: 0.92 }} animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.4 } }} transition={{ delay: 0.25, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}>
