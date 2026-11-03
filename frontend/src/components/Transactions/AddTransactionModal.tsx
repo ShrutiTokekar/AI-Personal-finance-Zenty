@@ -1,7 +1,7 @@
 // frontend/src/components/Transactions/AddTransactionModal.tsx
 import { useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
-import { Transaction } from '../../services/api';
+import { type Transaction } from '../../services/api';
 
 interface AddTransactionModalProps {
   onClose: () => void;

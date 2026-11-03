@@ -55,3 +55,6 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Tests
+.pytest_cache/

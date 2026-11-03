@@ -1,7 +1,7 @@
 // frontend/src/components/Stocks/StockDetailsModal.tsx
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, TrendingDown, DollarSign, BarChart3 } from 'lucide-react';
-import { stocksAPI, Stock, StockPrice, StockHistory } from '../../services/api';
+import { X, TrendingUp, TrendingDown } from 'lucide-react';
+import { stocksAPI, type Stock, type StockPrice, type StockHistory } from '../../services/api';
 
 interface StockDetailsModalProps {
   stock: Stock;

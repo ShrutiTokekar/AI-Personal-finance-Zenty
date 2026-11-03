@@ -1,11 +1,8 @@
 // frontend/src/components/Budget/BudgetPage.tsx
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  DollarSign, Plus, Edit2, Trash2, AlertCircle, 
-  TrendingUp, TrendingDown, PieChart, CheckCircle 
-} from 'lucide-react';
-import { budgetAPI, Budget, BudgetSummary } from '../../services/api';
+import { DollarSign, Plus, Edit2, Trash2, AlertCircle, TrendingUp, TrendingDown, PieChart, CheckCircle } from 'lucide-react';
+import { budgetAPI, type Budget, type BudgetSummary } from '../../services/api';
 import CreateBudgetModal from './CreateBudgetModal';
 import EditBudgetModal from './EditBudgetModal';
 
@@ -46,13 +43,6 @@ export default function BudgetPage() {
   const handleEdit = (budget: Budget) => {
     setSelectedBudget(budget);
     setShowEditModal(true);
-  };
-
-  const getStatusColor = (remaining: number, limit: number) => {
-    const percentRemaining = (remaining / limit) * 100;
-    if (percentRemaining > 50) return 'text-green-600 bg-green-50';
-    if (percentRemaining > 25) return 'text-yellow-600 bg-yellow-50';
-    return 'text-red-600 bg-red-50';
   };
 
   const getProgressColor = (spent: number, limit: number) => {

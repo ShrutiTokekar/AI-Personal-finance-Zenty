@@ -1,8 +1,8 @@
 // frontend/src/components/Transactions/TransactionsList.tsx
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Trash2, Plus, Filter, RefreshCw } from 'lucide-react';
-import { transactionAPI, Transaction } from '../../services/api';
+import { Trash2, Plus, RefreshCw } from 'lucide-react';
+import { transactionAPI, type Transaction } from '../../services/api';
 import AddTransactionModal from './AddTransactionModal';
 
 export default function TransactionsList() {

@@ -6,12 +6,15 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Remove or comment out the proxy
-    // proxy: {
-    //   '/api': {
-    //     target: 'http://localhost:8000',
-    //     changeOrigin: true,
-    //   }
-    // }
-  }
+    // In development the API runs on :8000; proxy /api so cookies stay same-origin.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: false,
+      },
+    },
+  },
+  build: {
+    sourcemap: false,
+  },
 })

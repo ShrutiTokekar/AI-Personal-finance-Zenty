@@ -1,57 +1,13 @@
-# Core API
+# Zenty backend - slim dependency set (~60 MB installed, was ~1 GB).
+# No PyTorch / Transformers / spaCy / pandas / scikit-learn / yfinance.
+
 fastapi==0.128.0
 uvicorn[standard]==0.40.0
-starlette==0.50.0
-
-# Database
+pydantic[email]==2.12.5
 sqlalchemy==2.0.45
-python-dateutil==2.9.0
-
-# Data Processing
-pandas==2.3.3
-numpy==2.4.1
-scikit-learn==1.8.0
-scipy==1.17.0
-
-# PyTorch for Deep Learning
-torch==2.5.1
-
-# Transformers for NLP
-transformers==4.57.3
-tokenizers==0.22.2
-huggingface-hub==0.36.0
-safetensors==0.7.0
-
-# spaCy for Advanced NLP
-spacy==3.8.11
-spacy-legacy==3.0.12
-spacy-loggers==1.0.5
-thinc==8.3.10
-blis==1.3.3
-murmurhash==1.0.15
-cymem==2.0.13
-preshed==3.0.12
-wasabi==1.1.3
-srsly==2.5.2
-catalogue==2.0.10
-typer-slim==0.21.1
-weasel==0.4.3
-cloudpathlib==0.23.0
-confection==0.1.5
-
-# spaCy English model
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-
-# Stock Data
-yfinance==1.0
-requests==2.32.5
-beautifulsoup4==4.14.3
-lxml==5.3.0
-multitasking==0.0.12
-peewee==3.19.0
-frozendict==2.4.7
-
-# Utilities
-python-multipart==0.0.21
-pydantic==2.12.5
+psycopg[binary]==3.2.10        # Postgres driver (Neon / Supabase)
+httpx==0.28.1                  # Google, Plaid, Resend, stock quotes
+argon2-cffi==25.1.0            # password hashing (Argon2id)
+cryptography==46.0.3           # Fernet encryption for bank tokens
+PyJWT[crypto]==2.10.1          # verifying Google sign-in tokens
 python-dotenv==1.2.1

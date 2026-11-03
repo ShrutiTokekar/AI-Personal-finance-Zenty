@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertCircle } from 'lucide-react';
-import { analyticsAPI, Summary } from '../../services/api';
+import { analyticsAPI, type Summary } from '../../services/api';
 import SpendingChart from './SpendingChart';
 import CategoryPieChart from './CategoryPieChart';
 
