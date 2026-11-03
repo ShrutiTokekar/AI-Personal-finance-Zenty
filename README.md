@@ -1,4 +1,19 @@
-# Zenty: personal finance, minus the stress
+<div align="center">
+
+<img src="/frontend/public/logo.png" alt="Zenty Finance Logo" width="160"/>
+
+# Zenty Finance
+### Personal finance, minus the stress
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776ab?style=flat-square&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
+[![Postgres](https://img.shields.io/badge/Database-Postgres-4169e1?style=flat-square&logo=postgresql)](https://neon.tech)
+[![Vercel](https://img.shields.io/badge/Deployed-Vercel-black?style=flat-square&logo=vercel)](https://vercel.com)
+
+</div>
+
+---
 
 Track spending, budgets, savings goals and stocks, and securely link bank accounts.
 Sign in with Google or email. New users get a welcome email, and investors get a daily
