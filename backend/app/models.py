@@ -49,6 +49,15 @@ class User(Base):
     stock_alerts: Mapped[bool] = mapped_column(Boolean, default=True)
     stock_alert_threshold: Mapped[float] = mapped_column(Float, default=3.0)  # percent
 
+    # SMS multi-factor authentication
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)  # E.164, e.g. +14155550123
+    phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    sms_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sms_code_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sms_code_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    mfa_ticket_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     def public(self):
         return {
             "id": self.id,
@@ -56,6 +65,9 @@ class User(Base):
             "name": self.name,
             "email_verified": self.email_verified,
             "has_password": self.password_hash is not None,
+            "phone_masked": ("•••• " + self.phone[-4:]) if self.phone else None,
+            "phone_verified": self.phone_verified,
+            "mfa_enabled": self.mfa_enabled,
             "google_linked": self.google_sub is not None,
             "stock_alerts": self.stock_alerts,
             "stock_alert_threshold": self.stock_alert_threshold,

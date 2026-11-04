@@ -294,6 +294,8 @@ def recurring_charges(db: Session, user_id: int) -> dict:
         if avg <= 0 or max(abs(a - avg) for a in amounts) > avg * 0.15:
             continue
         last = max(items, key=lambda t: t.date)
+        if (utcnow() - last.date).days > 40:
+            continue  # stopped repeating; don't predict a renewal that's already past
         found.append({
             "name": (last.description or last.category)[:60],
             "category": last.category,

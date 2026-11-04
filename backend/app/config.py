@@ -46,8 +46,17 @@ class Settings:
         self.plaid_secret = os.getenv("PLAID_SECRET", "")
         self.plaid_env = os.getenv("PLAID_ENV", "sandbox")  # sandbox | production
 
+        # SMS codes for two-step sign-in (Twilio).
+        self.twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+        self.twilio_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+        self.twilio_from = os.getenv("TWILIO_FROM_NUMBER", "")
+
         # Shared secret that the scheduled job (Vercel Cron) must present.
         self.cron_secret = os.getenv("CRON_SECRET", "")
+
+    @property
+    def sms_enabled(self) -> bool:
+        return bool(self.twilio_sid and self.twilio_token and self.twilio_from)
 
     def validate(self) -> None:
         """Refuse to start in production with unsafe settings."""

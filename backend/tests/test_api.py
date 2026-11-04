@@ -24,7 +24,7 @@ def client():
 
 
 def signup(c, email, name="Test User"):
-    r = c.post("/api/auth/signup", json={"name": name, "email": email, "password": PW})
+    r = c.post("/api/auth/signup", json={"name": name, "email": email, "password": PW, "confirm_password": PW, "phone": "+14155550123"})
     assert r.status_code == 200, r.text
     c.headers["X-CSRF-Token"] = c.cookies.get("zenty_csrf")
     return r.json()["user"]
@@ -38,7 +38,7 @@ def _startup():
 
 def test_signup_sets_httponly_cookie_and_hides_hash():
     c = client()
-    r = c.post("/api/auth/signup", json={"name": "A", "email": "a@example.com", "password": PW})
+    r = c.post("/api/auth/signup", json={"name": "A", "email": "a@example.com", "password": PW, "confirm_password": PW, "phone": "+14155550123"})
     assert r.status_code == 200
     set_cookie = r.headers.get_list("set-cookie")
     session = [h for h in set_cookie if h.startswith("zenty_session=")][0]
@@ -47,14 +47,14 @@ def test_signup_sets_httponly_cookie_and_hides_hash():
 
 
 def test_weak_password_rejected():
-    r = client().post("/api/auth/signup", json={"name": "W", "email": "w@example.com", "password": "password"})
+    r = client().post("/api/auth/signup", json={"name": "W", "email": "w@example.com", "password": "password", "confirm_password": "password", "phone": "+14155550123"})
     assert r.status_code == 400
 
 
 def test_duplicate_email_rejected():
     c = client()
     signup(c, "dup@example.com")
-    r = client().post("/api/auth/signup", json={"name": "B", "email": "DUP@example.com", "password": PW})
+    r = client().post("/api/auth/signup", json={"name": "B", "email": "DUP@example.com", "password": PW, "confirm_password": PW, "phone": "+14155550123"})
     assert r.status_code == 409
 
 
@@ -270,3 +270,85 @@ def test_overview_scores_and_recurring():
     signup(other, "overview2@example.com")
     o = other.get("/api/overview").json()
     assert o["recent"] == [] and o["recurring"]["items"] == []
+
+
+def test_signup_requires_matching_passwords_and_valid_phone():
+    base = {"name": "M", "email": "match@example.com", "password": PW, "phone": "+14155550123"}
+    r = client().post("/api/auth/signup", json={**base, "confirm_password": PW + "x"})
+    assert r.status_code == 400 and "match" in r.json()["detail"]
+    r = client().post("/api/auth/signup", json={**base, "confirm_password": PW, "phone": "1234567"})
+    assert r.status_code == 400 and "mobile number" in r.json()["detail"]
+    r = client().post("/api/auth/signup", json={**base, "confirm_password": PW, "phone": "(415) 555-0199"})
+    assert r.status_code == 200 and r.json()["user"]["phone_masked"] == "•••• 0199"
+
+
+def test_welcome_email_sent_with_verification_link(monkeypatch):
+    from app.routers import auth as auth_router
+    sent = []
+    monkeypatch.setattr(auth_router.emails, "send_welcome", lambda to, name, url: sent.append((to, url)) or True)
+    signup(client(), "welcome@example.com", "Wren")
+    assert sent and sent[0][0] == "welcome@example.com" and "?verify=" in sent[0][1]
+    token = sent[0][1].split("verify=")[1]
+    assert client().post("/api/auth/verify-email", json={"token": token}).status_code == 200
+
+
+def test_sms_mfa_signup_and_login(monkeypatch):
+    from app import sms
+    from app.config import Settings
+    monkeypatch.setattr(Settings, "sms_enabled", property(lambda self: True))
+    texts = []
+    monkeypatch.setattr(sms, "_send", lambda to, body: texts.append((to, body)) or True)
+    code = lambda: texts[-1][1].split("code is ")[1][:6]
+
+    c = client()
+    r = c.post("/api/auth/signup", json={"name": "Mo", "email": "mfa@example.com", "password": PW, "confirm_password": PW, "phone": "+14155550111"})
+    assert r.status_code == 200 and r.json()["phone_verification_required"] is True
+    c.headers["X-CSRF-Token"] = c.cookies.get("zenty_csrf")
+    assert texts[-1][0] == "+14155550111"
+    assert c.post("/api/auth/phone/verify", json={"code": "000000" if code() != "000000" else "111111"}).status_code == 400
+    r = c.post("/api/auth/phone/verify", json={"code": code()})
+    assert r.status_code == 200 and r.json()["user"]["phone_verified"] is True
+
+    # Password alone no longer signs you in.
+    d = client()
+    r = d.post("/api/auth/login", json={"email": "mfa@example.com", "password": PW})
+    assert r.status_code == 200 and r.json()["mfa_required"] is True
+    assert "zenty_session" not in d.cookies
+    ticket = r.json()["mfa_ticket"]
+    assert d.post("/api/auth/mfa/verify", json={"ticket": ticket, "code": "123456" if code() != "123456" else "654321"}).status_code == 400
+    r = d.post("/api/auth/mfa/verify", json={"ticket": ticket, "code": code()})
+    assert r.status_code == 200 and d.cookies.get("zenty_session")
+    # ticket is single-use
+    assert client().post("/api/auth/mfa/verify", json={"ticket": ticket, "code": code()}).status_code == 400
+
+
+def test_mfa_code_locks_after_too_many_attempts(monkeypatch):
+    from app import sms
+    from app.config import Settings
+    monkeypatch.setattr(Settings, "sms_enabled", property(lambda self: True))
+    texts = []
+    monkeypatch.setattr(sms, "_send", lambda to, body: texts.append(body) or True)
+    client().post("/api/auth/signup", json={"name": "L", "email": "lockmfa@example.com", "password": PW, "confirm_password": PW, "phone": "+14155550122"})
+    d = client()
+    ticket = d.post("/api/auth/login", json={"email": "lockmfa@example.com", "password": PW}).json()["mfa_ticket"]
+    real = texts[-1].split("code is ")[1][:6]
+    wrong = "000000" if real != "000000" else "111111"
+    for _ in range(5):
+        d.post("/api/auth/mfa/verify", json={"ticket": ticket, "code": wrong})
+    assert d.post("/api/auth/mfa/verify", json={"ticket": ticket, "code": real}).status_code == 429
+
+
+def test_db_upgrade_adds_missing_columns(tmp_path):
+    from sqlalchemy import create_engine, inspect, text
+    from app import db as dbmod
+    eng = create_engine(f"sqlite:///{tmp_path}/old.db")
+    with eng.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR(320))"))
+    old = dbmod.engine
+    dbmod.engine = eng
+    try:
+        dbmod._add_missing_columns()
+    finally:
+        dbmod.engine = old
+    cols = {c["name"] for c in inspect(eng).get_columns("users")}
+    assert {"phone", "mfa_enabled", "phone_verified"} <= cols

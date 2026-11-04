@@ -55,20 +55,30 @@ export interface User {
   stock_alerts: boolean;
   stock_alert_threshold: number;
   created_at: string;
+  phone_masked?: string | null;
+  phone_verified?: boolean;
+  mfa_enabled?: boolean;
 }
+
+export type LoginResult = { user: User } | { mfa_required: true; mfa_ticket: string; phone_masked: string | null };
 
 export interface PublicConfig {
   google_client_id: string | null;
   bank_linking: boolean;
   email_enabled?: boolean;
+  sms_enabled?: boolean;
 }
 
 export const authAPI = {
   config: () => api.get<PublicConfig>('/auth/config'),
   me: () => api.get<{ user: User }>('/auth/me'),
-  signup: (name: string, email: string, password: string) =>
-    api.post<{ user: User }>('/auth/signup', { name, email, password }),
-  login: (email: string, password: string) => api.post<{ user: User }>('/auth/login', { email, password }),
+  signup: (name: string, email: string, password: string, confirm_password: string, phone: string) =>
+    api.post<{ user: User; phone_verification_required: boolean }>('/auth/signup', { name, email, password, confirm_password, phone }),
+  login: (email: string, password: string) => api.post<LoginResult>('/auth/login', { email, password }),
+  mfaVerify: (ticket: string, code: string) => api.post<{ user: User }>('/auth/mfa/verify', { ticket, code }),
+  mfaResend: (ticket: string) => api.post('/auth/mfa/resend', { ticket }),
+  phoneVerify: (code: string) => api.post<{ user: User }>('/auth/phone/verify', { code }),
+  phoneResend: () => api.post('/auth/phone/resend'),
   google: (credential: string) => api.post<{ user: User; new_user: boolean }>('/auth/google', { credential }),
   logout: () => api.post('/auth/logout'),
   logoutEverywhere: () => api.post('/auth/logout-everywhere'),
