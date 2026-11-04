@@ -469,3 +469,22 @@ def test_subscriptions_manage(monkeypatch):
     other = client()
     signup(other, "subs2@example.com")
     assert other.patch(f"/api/subscriptions/{sid}", json={"status": "active"}).status_code == 404
+
+
+def test_db_upgrade_tolerates_concurrent_add(tmp_path, monkeypatch):
+    """If another server instance adds a column first, startup must not crash."""
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine.reflection import Inspector
+    from app import db as dbmod
+    eng = create_engine(f"sqlite:///{tmp_path}/race.db")
+    with eng.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR(320), phone VARCHAR(20))"))
+    real = Inspector.get_columns
+    # Pretend 'phone' was missing when we looked (the other instance added it right after).
+    monkeypatch.setattr(Inspector, "get_columns", lambda self, t, **kw: [c for c in real(self, t, **kw) if c["name"] != "phone"])
+    old = dbmod.engine
+    dbmod.engine = eng
+    try:
+        dbmod._add_missing_columns()  # must not raise
+    finally:
+        dbmod.engine = old

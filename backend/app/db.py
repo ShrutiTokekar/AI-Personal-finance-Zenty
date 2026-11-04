@@ -37,23 +37,32 @@ def init_db() -> None:
 
 def _add_missing_columns() -> None:
     """create_all() never alters existing tables, so add any new columns here.
-    Safe to run on every start: it only adds columns that are missing."""
+    Safe to run on every start and from several server instances at once:
+    it only adds missing columns, and never stops the app from starting."""
+    import logging
+
     from sqlalchemy import inspect, text
 
+    log = logging.getLogger("zenty.db")
     insp = inspect(engine)
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            if not insp.has_table(table.name):
+    pg = engine.dialect.name == "postgresql"
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        existing = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
                 continue
-            existing = {c["name"] for c in insp.get_columns(table.name)}
-            for col in table.columns:
-                if col.name in existing:
-                    continue
-                ddl_type = col.type.compile(dialect=engine.dialect)
-                default = ""
-                if col.default is not None and getattr(col.default, "is_scalar", False):
-                    v = col.default.arg
-                    default = f" DEFAULT {'TRUE' if v is True else 'FALSE' if v is False else repr(v)}"
-                    if engine.dialect.name == "sqlite" and isinstance(v, bool):
-                        default = f" DEFAULT {int(v)}"
-                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl_type}{default}'))
+            ddl_type = col.type.compile(dialect=engine.dialect)
+            default = ""
+            if col.default is not None and getattr(col.default, "is_scalar", False):
+                v = col.default.arg
+                default = f" DEFAULT {'TRUE' if v is True else 'FALSE' if v is False else repr(v)}"
+                if engine.dialect.name == "sqlite" and isinstance(v, bool):
+                    default = f" DEFAULT {int(v)}"
+            guard = "IF NOT EXISTS " if pg else ""
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN {guard}"{col.name}" {ddl_type}{default}'))
+            except Exception as exc:  # another instance may have added it a moment ago
+                log.warning("Skipped adding %s.%s: %s", table.name, col.name, type(exc).__name__)
