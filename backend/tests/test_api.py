@@ -390,3 +390,82 @@ def test_assistant_delete_needs_confirmation_and_plans(monkeypatch):
     c.post("/api/savings/goals", json={"name": "Trip", "target_amount": 1200})
     g = c.post("/api/chat", json={"message": "plan my goals"}).json()
     assert "Trip" in g["message"]
+
+
+def test_settings_preferences_and_validation():
+    c = client()
+    signup(c, "prefs@example.com")
+    r = c.patch("/api/account/profile", json={"currency": "eur", "start_page": "budget", "budget_alert_pct": 80, "savings_target_pct": 25})
+    u = r.json()["user"]
+    assert (u["currency"], u["start_page"], u["budget_alert_pct"], u["savings_target_pct"]) == ("EUR", "budget", 80, 25)
+    assert c.patch("/api/account/profile", json={"currency": "XYZ"}).status_code == 400
+    assert c.patch("/api/account/profile", json={"start_page": "admin"}).status_code == 400
+    assert c.patch("/api/account/profile", json={"budget_alert_pct": 10}).status_code == 422
+
+
+def test_change_phone_with_sms_confirmation(monkeypatch):
+    from app import sms
+    from app.config import Settings
+    monkeypatch.setattr(Settings, "sms_enabled", property(lambda self: True))
+    texts = []
+    monkeypatch.setattr(sms, "_send", lambda to, body: texts.append((to, body)) or True)
+    c = client()
+    signup(c, "newphone@example.com")
+    assert c.post("/api/account/phone", json={"phone": "+14155550999", "password": "wrong"}).status_code == 400
+    r = c.post("/api/account/phone", json={"phone": "+1 415 555 0999", "password": PW})
+    assert r.json()["verification_sent"] is True and texts[-1][0] == "+14155550999"
+    assert r.json()["user"]["phone_masked"] == "•••• 0123"  # unchanged until confirmed
+    code = texts[-1][1].split("code is ")[1][:6]
+    r = c.post("/api/account/phone/confirm", json={"code": code})
+    assert r.json()["user"]["phone_masked"] == "•••• 0999" and r.json()["user"]["phone_verified"] is True
+    r = c.post("/api/account/mfa", json={"enabled": False, "password": PW})
+    assert r.json()["user"]["mfa_enabled"] is False
+    r = c.post("/api/account/mfa", json={"enabled": True, "password": PW})
+    assert r.json()["user"]["mfa_enabled"] is True
+
+
+def test_sessions_list_and_revoke():
+    a = client()
+    signup(a, "devices@example.com")
+    b = client()
+    assert b.post("/api/auth/login", json={"email": "devices@example.com", "password": PW}).status_code == 200
+    sessions = a.get("/api/account/sessions").json()["sessions"]
+    assert len(sessions) == 2 and sum(s["current"] for s in sessions) == 1
+    other = next(s for s in sessions if not s["current"])
+    assert a.delete(f"/api/account/sessions/{other['id']}").status_code == 200
+    assert b.get("/api/auth/me").status_code == 401
+
+
+def test_subscriptions_manage(monkeypatch):
+    from datetime import datetime, timedelta
+    from app.db import SessionLocal
+    from app.models import Transaction, User
+    c = client()
+    signup(c, "subs@example.com")
+    with SessionLocal() as db:
+        uid = db.query(User).filter_by(email="subs@example.com").one().id
+        now = datetime.utcnow()
+        for m in (0, 1, 2):
+            db.add(Transaction(user_id=uid, amount=15.99, category="Entertainment", type="expense", description="NETFLIX.COM", date=now - timedelta(days=30 * m + 1)))
+            db.add(Transaction(user_id=uid, amount=60, category="Health", type="expense", description="Gym membership", date=now - timedelta(days=30 * m + 2)))
+        db.commit()
+    s = c.get("/api/subscriptions").json()
+    keys = {d["merchant_key"]: d for d in s["suggestions"]}
+    assert "netflix" in keys and s["items"] == []
+    # confirm one detection, dismiss the other
+    r = c.post("/api/subscriptions", json={"name": "Netflix", "amount": 15.99, "cycle": "monthly", "merchant_key": "netflix",
+                                            "source": "detected", "next_date": keys["netflix"]["next_date"]})
+    sid = r.json()["subscription"]["id"]
+    gym_key = next(k for k in keys if "gym" in k)
+    c.post("/api/subscriptions/ignore", json={"merchant_key": gym_key, "name": "Gym membership"})
+    c.post("/api/subscriptions", json={"name": "iCloud+", "amount": 35.88, "cycle": "yearly"})
+    s = c.get("/api/subscriptions").json()
+    assert s["suggestions"] == [] and {i["name"] for i in s["items"]} == {"Netflix", "iCloud+"}
+    assert s["totals"]["monthly"] == round(15.99 + 35.88 / 12, 2)
+    c.patch(f"/api/subscriptions/{sid}", json={"status": "cancelled"})
+    s = c.get("/api/subscriptions").json()
+    assert s["totals"]["active"] == 1
+    # another user can't touch it
+    other = client()
+    signup(other, "subs2@example.com")
+    assert other.patch(f"/api/subscriptions/{sid}", json={"status": "active"}).status_code == 404

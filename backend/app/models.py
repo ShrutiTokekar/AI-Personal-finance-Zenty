@@ -57,6 +57,13 @@ class User(Base):
     sms_code_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sms_code_attempts: Mapped[int] = mapped_column(Integer, default=0)
     mfa_ticket_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pending_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # personalisation
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    start_page: Mapped[str] = mapped_column(String(20), default="dashboard")
+    budget_alert_pct: Mapped[int] = mapped_column(Integer, default=85)
+    savings_target_pct: Mapped[int] = mapped_column(Integer, default=20)
 
     def public(self):
         return {
@@ -68,6 +75,10 @@ class User(Base):
             "phone_masked": ("•••• " + self.phone[-4:]) if self.phone else None,
             "phone_verified": self.phone_verified,
             "mfa_enabled": self.mfa_enabled,
+            "currency": self.currency or "USD",
+            "start_page": self.start_page or "dashboard",
+            "budget_alert_pct": self.budget_alert_pct or 85,
+            "savings_target_pct": self.savings_target_pct or 20,
             "google_linked": self.google_sub is not None,
             "stock_alerts": self.stock_alerts,
             "stock_alert_threshold": self.stock_alert_threshold,
@@ -271,4 +282,36 @@ class BankAccount(Base):
             "current_balance": self.current_balance,
             "available_balance": self.available_balance,
             "currency": self.currency,
+        }
+
+
+class Subscription(Base):
+    """A recurring charge the user tracks (confirmed from detection or added by hand).
+    status: active | cancelled | ignored (ignored = "not a subscription")."""
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    cycle: Mapped[str] = mapped_column(String(10), default="monthly")  # weekly | monthly | yearly
+    next_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    category: Mapped[str] = mapped_column(String(100), default="Subscriptions")
+    status: Mapped[str] = mapped_column(String(12), default="active")
+    source: Mapped[str] = mapped_column(String(10), default="manual")  # manual | detected
+    merchant_key: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    @property
+    def monthly_cost(self) -> float:
+        return {"weekly": self.amount * 52 / 12, "yearly": self.amount / 12}.get(self.cycle, self.amount)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "name": self.name, "amount": self.amount, "cycle": self.cycle,
+            "next_date": iso(self.next_date), "category": self.category, "status": self.status,
+            "source": self.source, "merchant_key": self.merchant_key,
+            "monthly_cost": round(self.monthly_cost, 2), "cancelled_at": iso(self.cancelled_at),
         }

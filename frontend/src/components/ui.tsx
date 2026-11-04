@@ -2,11 +2,19 @@ import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 
+/* ---------- display preferences (set from the signed-in user's settings) ---------- */
+
+export const displayPrefs = { currency: 'USD', alertPct: 85 };
+export function setDisplayPrefs(p: { currency?: string; budget_alert_pct?: number }) {
+  if (p.currency) displayPrefs.currency = p.currency;
+  if (p.budget_alert_pct) displayPrefs.alertPct = p.budget_alert_pct;
+}
+
 /* ---------- formatting ---------- */
 
 export function formatMoney(n: number | null | undefined, opts: { cents?: boolean; currency?: string; sign?: boolean } = {}) {
   if (n == null || Number.isNaN(n)) return '—';
-  const { cents = true, currency = 'USD', sign = false } = opts;
+  const { cents = true, currency = displayPrefs.currency, sign = false } = opts;
   const s = Math.abs(n).toLocaleString(undefined, {
     style: 'currency',
     currency,
@@ -107,7 +115,7 @@ export function Spinner({ className = '' }: { className?: string }) {
 /** Thin progress bar. Turns matcha near the limit and red past it. */
 export function Progress({ value, max, className = '' }: { value: number; max: number; className?: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0;
-  const color = pct > 100 ? 'bg-red-500' : pct >= 85 ? 'bg-matcha-400' : 'bg-primary-500';
+  const color = pct > 100 ? 'bg-red-500' : pct >= displayPrefs.alertPct ? 'bg-saffron-400' : 'bg-primary-500';
   return (
     <div className={`h-2 w-full overflow-hidden rounded-full bg-gray-100 ${className}`} role="progressbar"
       aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>

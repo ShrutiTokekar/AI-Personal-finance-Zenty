@@ -50,14 +50,14 @@ def _send(to: str, body: str) -> bool:
         return False
 
 
-def issue_code(user: User, purpose: str) -> bool:
+def issue_code(user: User, purpose: str, to: str | None = None) -> bool:
     """Create a fresh 6-digit code (only its hash is stored) and text it."""
     code = f"{secrets.randbelow(1_000_000):06d}"
     user.sms_code_hash = token_hash(f"{user.id}:{code}")
     user.sms_code_expires = utcnow() + CODE_TTL
     user.sms_code_attempts = 0
     text = f"Your Zenty {purpose} code is {code}. It expires in 10 minutes. Never share this code."
-    return _send(user.phone or "", text)
+    return _send(to or user.phone or "", text)
 
 
 def check_code(user: User, code: str) -> None:

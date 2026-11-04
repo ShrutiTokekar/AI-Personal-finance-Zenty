@@ -353,7 +353,8 @@ export default function Dashboard({ user, onNavigate }: Props) {
         </Card>
 
         <Card title="Subscriptions" icon={Repeat} className="lg:col-span-4 border-lilac-100"
-          action={data.recurring.items.length > 0 ? <span className="text-xs text-gray-500"><Money value={data.recurring.monthly_total} cents={false} />/mo</span> : undefined}>
+          action={<button onClick={() => onNavigate('subscriptions')} className="flex items-center text-xs font-semibold text-primary-700 hover:text-primary-900">
+            {data.recurring.items.length > 0 && <><Money value={data.recurring.monthly_total} cents={false} />/mo · </>}Manage <ChevronRight className="h-3.5 w-3.5" /></button>}>
           {data.recurring.items.length === 0 ? (
             <EmptyState icon={Repeat} title="None detected yet" text="Zenty spots repeating monthly charges automatically after a couple of months." />
           ) : (

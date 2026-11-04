@@ -191,12 +191,15 @@ def zen_score(db: Session, user_id: int) -> dict:
     """0-100 financial health score from four equally weighted factors."""
     from .models import SavingsGoal
 
+    from .models import User
     s = monthly_summary(db, user_id)
     factors = []
+    user = db.get(User, user_id)
+    target = (user.savings_target_pct if user and user.savings_target_pct else 20)
 
     if s["total_income"] > 0:
-        pts = 25 * _clamp(s["savings_rate"] / 20)
-        tip = "Saving 20%+ of income earns full points." if pts < 25 else "You're saving 20%+ of income."
+        pts = 25 * _clamp(s["savings_rate"] / target)
+        tip = f"Saving {target}%+ of income earns full points." if pts < 25 else f"You're saving {target}%+ of income."
     else:
         pts, tip = 8, "Log your income to score this."
     factors.append({"key": "savings", "label": "Savings rate", "points": round(pts), "max": 25, "tip": tip})
@@ -269,7 +272,7 @@ def daily_spending(db: Session, user_id: int) -> list[dict]:
 
 def _merchant_key(text: str | None) -> str:
     t = (text or "").lower()
-    t = _re.sub(r"[0-9#*]+", " ", t)
+    t = _re.sub(r"[^a-z ]+", " ", t)
     t = _re.sub(r"\b(inc|llc|ltd|co|com|www|payment|purchase|pos|debit|card)\b", " ", t)
     return " ".join(t.split())[:40]
 
@@ -297,6 +300,7 @@ def recurring_charges(db: Session, user_id: int) -> dict:
         if (utcnow() - last.date).days > 40:
             continue  # stopped repeating; don't predict a renewal that's already past
         found.append({
+            "merchant_key": key,
             "name": (last.description or last.category)[:60],
             "category": last.category,
             "amount": round(avg, 2),

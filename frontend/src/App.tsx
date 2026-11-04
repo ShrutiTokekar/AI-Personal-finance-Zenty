@@ -12,6 +12,7 @@ import {
   Menu,
   PiggyBank,
   Receipt,
+  Repeat,
   Settings,
   Sparkles,
   TrendingUp,
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 import AuthPage from './components/Auth/AuthPage';
 import LandingPage from './components/Landing/LandingPage';
-import { LogoMark, Spinner } from './components/ui';
+import { LogoMark, Spinner, setDisplayPrefs } from './components/ui';
 import AssistantWidget from './components/Assistant/AssistantWidget';
 import { authAPI, chatAPI, errorMessage, type PublicConfig, type User } from './services/api';
 
@@ -34,6 +35,7 @@ const Stocks = lazy(() => import('./components/Stocks/StocksPage'));
 const Budget = lazy(() => import('./components/Budget/BudgetPage'));
 const SettingsPage = lazy(() => import('./components/Settings/SettingsPage'));
 const BankPage = lazy(() => import('./components/Bank/BankPage'));
+const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
 
 type Banner = { kind: 'ok' | 'error'; text: string } | null;
 type PublicView = 'landing' | 'signin' | 'signup';
@@ -55,6 +57,7 @@ const sections = [
     items: [
       { id: 'budget', name: 'Budgets', icon: Wallet },
       { id: 'savings', name: 'Goals', icon: PiggyBank },
+      { id: 'subscriptions', name: 'Subscriptions', icon: Repeat },
       { id: 'stocks', name: 'Investments', icon: BadgeDollarSign },
     ],
   },
@@ -118,6 +121,16 @@ function App() {
     window.history.replaceState({}, '', '/');
     setView('landing');
   }, []);
+
+  // Apply display preferences, and open the user's chosen start page once per sign-in.
+  const userId = user?.id;
+  useEffect(() => {
+    if (user) setDisplayPrefs(user);
+  }, [user]);
+  useEffect(() => {
+    if (userId) setActiveTab(user?.start_page || 'dashboard');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     window.addEventListener('zenty:signed-out', signedOut);
@@ -252,6 +265,7 @@ function App() {
       case 'analytics': return <Analytics />;
       case 'stocks': return <Stocks />;
       case 'budget': return <Budget />;
+      case 'subscriptions': return <SubscriptionsPage />;
       case 'bank': return <BankPage user={user} enabled={!!config?.bank_linking} onRequestVerify={resendVerification} />;
       case 'settings': return <SettingsPage user={user} onUserChange={setUser} onSignedOut={signedOut} />;
       default: return <Dashboard user={user} onNavigate={go} />;

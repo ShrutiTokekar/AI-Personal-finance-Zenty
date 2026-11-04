@@ -104,6 +104,19 @@ def anomalies(user: User = Depends(current_user), db: Session = Depends(get_db))
     return {"anomalies": insights.unusual_transactions(db, user.id)}
 
 
+def _recurring_for_dashboard(db: Session, uid: int) -> dict:
+    """Tracked subscriptions if the user manages any, otherwise detected ones."""
+    from .subscriptions import summary
+    sub = summary(db, uid)
+    active = [s for s in sub["items"] if s["status"] == "active"]
+    if active:
+        items = [{"name": s["name"], "category": s["category"], "amount": s["amount"],
+                  "last_date": s["next_date"], "next_date": s["next_date"]} for s in active]
+        return {"items": items[:8], "monthly_total": sub["totals"]["monthly"]}
+    items = sub["suggestions"]
+    return {"items": items[:8], "monthly_total": round(sum(i["amount"] for i in items), 2)}
+
+
 @router.get("/overview")
 def overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Everything the dashboard needs in one request."""
@@ -129,7 +142,7 @@ def overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "budgets": budgets[:4],
         "goals": [g.to_dict() for g in goals],
         "recent": [t.to_dict() for t in recent],
-        "recurring": insights.recurring_charges(db, uid),
+        "recurring": _recurring_for_dashboard(db, uid),
         "net_worth": {"cash": cash, "debt": debt, "invested": invested, "total": cash + invested - debt,
                       "linked_accounts": len(accounts)},
     }

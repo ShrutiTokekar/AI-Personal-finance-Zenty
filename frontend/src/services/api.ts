@@ -58,7 +58,13 @@ export interface User {
   phone_masked?: string | null;
   phone_verified?: boolean;
   mfa_enabled?: boolean;
+  currency?: string;
+  start_page?: string;
+  budget_alert_pct?: number;
+  savings_target_pct?: number;
 }
+
+export interface DeviceSession { id: number; created_at: string; expires_at: string; device: string; current: boolean }
 
 export type LoginResult = { user: User } | { mfa_required: true; mfa_ticket: string; phone_masked: string | null };
 
@@ -89,8 +95,14 @@ export const authAPI = {
 };
 
 export const accountAPI = {
-  updateProfile: (data: Partial<Pick<User, 'name' | 'stock_alerts' | 'stock_alert_threshold'>>) =>
+  updateProfile: (data: Partial<Pick<User, 'name' | 'stock_alerts' | 'stock_alert_threshold' | 'currency' | 'start_page' | 'budget_alert_pct' | 'savings_target_pct'>>) =>
     api.patch<{ user: User }>('/account/profile', data),
+  setMfa: (enabled: boolean, password: string | null) => api.post<{ user: User }>('/account/mfa', { enabled, password }),
+  changePhone: (phone: string, password: string | null) =>
+    api.post<{ verification_sent: boolean; user: User }>('/account/phone', { phone, password }),
+  confirmPhone: (code: string) => api.post<{ user: User }>('/account/phone/confirm', { code }),
+  sessions: () => api.get<{ sessions: DeviceSession[] }>('/account/sessions'),
+  revokeSession: (id: number) => api.delete(`/account/sessions/${id}`),
   changePassword: (current_password: string | null, new_password: string) =>
     api.post('/account/password', { current_password, new_password }),
   exportData: () => api.get('/account/export'),
@@ -308,6 +320,30 @@ export interface Overview {
   recurring: { items: { name: string; category: string; amount: number; last_date: string; next_date: string }[]; monthly_total: number };
   net_worth: { cash: number; debt: number; invested: number; total: number; linked_accounts: number };
 }
+
+export type Cycle = 'weekly' | 'monthly' | 'yearly';
+export interface Subscription {
+  id: number; name: string; amount: number; cycle: Cycle; next_date: string | null; category: string;
+  status: 'active' | 'cancelled' | 'ignored'; source: 'manual' | 'detected'; merchant_key: string | null;
+  monthly_cost: number; cancelled_at: string | null;
+}
+export interface DetectedCharge { merchant_key: string; name: string; category: string; amount: number; last_date: string; next_date: string }
+export interface SubscriptionSummary {
+  items: Subscription[];
+  suggestions: DetectedCharge[];
+  totals: { monthly: number; yearly: number; active: number };
+  upcoming: Subscription[];
+}
+
+export const subscriptionsAPI = {
+  list: () => api.get<SubscriptionSummary>('/subscriptions'),
+  add: (data: { name: string; amount: number; cycle: Cycle; next_date?: string | null; category?: string; merchant_key?: string; source?: 'manual' | 'detected' }) =>
+    api.post<{ subscription: Subscription }>('/subscriptions', data),
+  update: (id: number, data: Partial<Pick<Subscription, 'name' | 'amount' | 'cycle' | 'next_date' | 'status'>>) =>
+    api.patch<{ subscription: Subscription }>(`/subscriptions/${id}`, data),
+  remove: (id: number) => api.delete(`/subscriptions/${id}`),
+  ignore: (merchant_key: string, name: string) => api.post('/subscriptions/ignore', { merchant_key, name }),
+};
 
 export const overviewAPI = {
   get: () => api.get<Overview>('/overview'),
