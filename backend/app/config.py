@@ -35,7 +35,9 @@ class Settings:
         self.encryption_key = os.getenv("ZENTY_ENCRYPTION_KEY", "")
 
         self.cookie_secure = _bool("COOKIE_SECURE", self.is_prod)
-        self.session_days = int(os.getenv("SESSION_DAYS", "7"))
+        # Sign out after this many minutes with no activity, and after this many hours no matter what.
+        self.session_idle_minutes = int(os.getenv("SESSION_IDLE_MINUTES", "15"))
+        self.session_max_hours = int(os.getenv("SESSION_MAX_HOURS", "12"))
 
         self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
 

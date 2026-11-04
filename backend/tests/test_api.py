@@ -296,7 +296,7 @@ def test_welcome_email_sent_with_verification_link(monkeypatch):
     sent = []
     monkeypatch.setattr(auth_router.emails, "send_welcome", lambda to, name, url: sent.append((to, url)) or True)
     signup(client(), "welcome@example.com", "Wren")
-    assert sent and sent[0][0] == "welcome@example.com" and "?verify=" in sent[0][1]
+    assert sent and sent[0][0] == "welcome@example.com" and "#verify=" in sent[0][1]
     token = sent[0][1].split("verify=")[1]
     assert client().post("/api/auth/verify-email", json={"token": token}).status_code == 200
 
@@ -488,3 +488,138 @@ def test_db_upgrade_tolerates_concurrent_add(tmp_path, monkeypatch):
         dbmod._add_missing_columns()  # must not raise
     finally:
         dbmod.engine = old
+
+
+# ---------------------------------------------------------------- security hardening
+
+PUBLIC_ROUTES = {
+    "/api/health", "/api/auth/config", "/api/auth/signup", "/api/auth/login", "/api/auth/google", "/api/auth/logout",
+    "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/mfa/verify", "/api/auth/mfa/resend",
+}
+
+
+def test_no_api_route_is_public():
+    """Every endpoint except sign-in plumbing must refuse requests without a session."""
+    import re
+    from fastapi.routing import APIRoute
+    c = client()
+    checked = []
+
+    def walk(routes):
+        for r in routes:
+            if isinstance(r, APIRoute):
+                yield r
+            inner = getattr(getattr(r, "original_router", None), "routes", None) or getattr(r, "routes", None)
+            if inner:
+                yield from walk(inner)
+
+    for route in walk(app.routes):
+        if not route.path.startswith("/api/"):
+            continue
+        path = re.sub(r"\{[^}]+\}", "1", route.path)
+        for method in route.methods - {"HEAD", "OPTIONS"}:
+            r = c.request(method, path, json={})
+            checked.append((method, route.path, r.status_code))
+            if route.path in PUBLIC_ROUTES:
+                continue
+            if route.path.startswith("/api/internal/"):
+                assert r.status_code == 404, (method, route.path, r.status_code)  # hidden without the cron secret
+            else:
+                assert r.status_code == 401, (method, route.path, r.status_code)
+    assert len(checked) > 50
+
+
+def test_session_expires_after_inactivity():
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import AuthSession, User, utcnow
+    c = client()
+    signup(c, "idle@example.com")
+    assert c.get("/api/auth/me").status_code == 200
+    with SessionLocal() as db:
+        uid = db.query(User).filter_by(email="idle@example.com").one().id
+        for s in db.query(AuthSession).filter_by(user_id=uid):
+            s.last_seen_at = utcnow() - timedelta(minutes=16)
+        db.commit()
+    r = c.get("/api/auth/me")
+    assert r.status_code == 401 and "inactivity" in r.json()["detail"]
+    assert c.get("/api/auth/me").status_code == 401  # the session row is gone
+
+
+def test_activity_keeps_session_alive_and_max_lifetime_enforced():
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import AuthSession, User, utcnow
+    c = client()
+    signup(c, "active@example.com")
+    with SessionLocal() as db:
+        uid = db.query(User).filter_by(email="active@example.com").one().id
+        s = db.query(AuthSession).filter_by(user_id=uid).one()
+        s.last_seen_at = utcnow() - timedelta(minutes=10)
+        db.commit()
+    assert c.get("/api/auth/me").status_code == 200  # 10 min idle is still fine, and refreshes last-seen
+    with SessionLocal() as db:
+        s = db.query(AuthSession).filter_by(user_id=uid).one()
+        assert (utcnow() - s.last_seen_at).total_seconds() < 60
+        assert (s.expires_at - s.created_at) <= timedelta(hours=12, seconds=5)
+        s.expires_at = utcnow() - timedelta(seconds=1)
+        db.commit()
+    assert c.get("/api/auth/me").status_code == 401
+
+
+def test_phone_number_encrypted_at_rest():
+    from sqlalchemy import text
+    from app.db import SessionLocal
+    c = client()
+    signup(c, "encphone@example.com")
+    with SessionLocal() as db:
+        raw = db.execute(text("SELECT phone, phone_enc FROM users WHERE email = 'encphone@example.com'")).one()
+    assert raw[0] is None and raw[1] and "4155550123" not in raw[1]
+    assert c.get("/api/auth/me").json()["user"]["phone_masked"] == "•••• 0123"
+
+
+def test_security_events_and_alerts(monkeypatch):
+    from app.routers import account as account_router
+    from app.routers import auth as auth_router
+    alerts = []
+    fake = lambda to, name, title, detail, device: alerts.append(title) or True
+    monkeypatch.setattr(auth_router.emails, "send_security_alert", fake)
+    monkeypatch.setattr(account_router.emails, "send_security_alert", fake)
+    c = client()
+    signup(c, "events@example.com")
+    client().post("/api/auth/login", json={"email": "events@example.com", "password": "wrong-password"})
+    other = client()
+    other.headers["User-Agent"] = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile Safari/604.1"
+    assert other.post("/api/auth/login", json={"email": "events@example.com", "password": PW}).status_code == 200
+    assert "New sign-in" in alerts
+    c.post("/api/account/password", json={"current_password": PW, "new_password": "Brand-New-Passw0rd!"})
+    assert "Password changed" in alerts
+    kinds = [e["kind"] for e in c.get("/api/account/security-events").json()["events"]]
+    assert {"signup", "login", "login_failed", "password_changed"} <= set(kinds)
+
+
+def test_verification_link_expires():
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import User, utcnow
+    from app.routers import auth as auth_router
+    sent = []
+    import app.emails as em
+    orig = em.send_welcome
+    auth_router.emails.send_welcome = lambda to, name, url: sent.append(url) or True
+    try:
+        signup(client(), "expire@example.com")
+    finally:
+        auth_router.emails.send_welcome = orig
+    token = sent[0].split("#verify=")[1]
+    with SessionLocal() as db:
+        u = db.query(User).filter_by(email="expire@example.com").one()
+        u.verify_expires = utcnow() - timedelta(minutes=1)
+        db.commit()
+    assert client().post("/api/auth/verify-email", json={"token": token}).status_code == 400
+
+
+def test_security_headers_on_api():
+    r = client().get("/api/health")
+    for h in ("X-Frame-Options", "X-Content-Type-Options", "Cross-Origin-Opener-Policy", "Cross-Origin-Resource-Policy", "Referrer-Policy"):
+        assert h in r.headers

@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  Bell, Check, Download, KeyRound, Laptop, LogOut, Palette, Phone, ShieldCheck, Smartphone, Trash2, User as UserIcon, Wallet,
+  Activity, Bell, Check, Download, KeyRound, Laptop, LogOut, Palette, Phone, ShieldCheck, Smartphone, Trash2, User as UserIcon, Wallet,
 } from 'lucide-react';
-import { accountAPI, authAPI, errorMessage, type DeviceSession, type User } from '../../services/api';
+import { accountAPI, authAPI, errorMessage, type DeviceSession, type SecurityEvent, type User } from '../../services/api';
 import { PageHeader } from '../ui';
 
 interface Props {
@@ -17,6 +17,7 @@ const SECTIONS = [
   { id: 'budgeting', label: 'Budgeting', icon: Wallet },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'security', label: 'Security', icon: ShieldCheck },
+  { id: 'activity', label: 'Security activity', icon: Activity },
   { id: 'privacy', label: 'Privacy & data', icon: Download },
 ];
 
@@ -90,6 +91,7 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
   const [confirmPw, setConfirmPw] = useState('');
   const [pwStatus, setPwStatus] = useState<Status>(null);
   const [devices, setDevices] = useState<DeviceSession[]>([]);
+  const [events, setEvents] = useState<SecurityEvent[]>([]);
 
   // danger zone
   const [confirmEmail, setConfirmEmail] = useState('');
@@ -97,7 +99,10 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
   const [delStatus, setDelStatus] = useState<Status>(null);
   const [busy, setBusy] = useState('');
 
-  const loadDevices = () => accountAPI.sessions().then((r) => setDevices(r.data.sessions)).catch(() => undefined);
+  const loadDevices = () => {
+    accountAPI.sessions().then((r) => setDevices(r.data.sessions)).catch(() => undefined);
+    accountAPI.securityEvents().then((r) => setEvents(r.data.events)).catch(() => undefined);
+  };
   useEffect(() => {
     loadDevices();
   }, []);
@@ -405,9 +410,36 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
             </div>
           </Section>
 
+          {/* Security activity */}
+          <Section id="activity" icon={Activity} title="Recent security activity"
+            description="Sign-ins and security changes on your account. If something looks unfamiliar, change your password and sign out everywhere.">
+            {events.length === 0 ? <p className="text-sm text-gray-500">No activity yet.</p> : (
+              <ul className="divide-y divide-line">
+                {events.map((e) => {
+                  const label: Record<string, string> = {
+                    signup: 'Account created', login: 'Signed in', login_failed: 'Failed sign-in attempt', password_changed: 'Password changed',
+                    password_reset: 'Password reset', phone_changed: 'Phone number changed', mfa_enabled: 'Two-step sign-in turned on',
+                    mfa_disabled: 'Two-step sign-in turned off', session_revoked: 'A device was signed out', signout_all: 'Signed out everywhere',
+                  };
+                  const warn = e.kind === 'login_failed' || e.kind === 'mfa_disabled';
+                  return (
+                    <li key={e.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                      <span className={warn ? 'font-medium text-red-600' : 'text-ink'}>{label[e.kind] ?? e.kind}</span>
+                      <span className="text-right text-xs text-gray-500">{e.device} · {new Date(e.created_at + 'Z').toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Section>
+
           {/* Privacy */}
           <Section id="privacy" icon={Download} title="Privacy & data" description="Your data is yours. Take it with you any time.">
-            <button onClick={exportData} className="btn-ghost"><Download className="h-4 w-4" /> Download my data</button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={exportData} className="btn-ghost"><Download className="h-4 w-4" /> Download my data</button>
+              <a href="/privacy" className="text-sm font-medium text-primary-700 hover:text-primary-900">Privacy Policy</a>
+              <a href="/terms" className="text-sm font-medium text-primary-700 hover:text-primary-900">Terms of Service</a>
+            </div>
           </Section>
 
           <Section id="delete" icon={Trash2} title="Delete account" danger>

@@ -125,3 +125,18 @@ def send_stock_digest(to: str, name: str, movers: list[dict], threshold: float) 
 Turn these emails off any time in Zenty → Settings.</p>"""
     subject = f"Your stocks are {direction} today {'📈' if total >= 0 else '📉'}"
     return send_email(to, subject, _layout("Daily stock update", body))
+
+
+def send_security_alert(to: str, name: str, title: str, detail: str, device: str) -> bool:
+    """Tell the account owner about a sensitive change, in case it wasn't them."""
+    first = html.escape((name or "there").split(" ")[0])
+    body = f"""
+<p>Hi {first},</p>
+<p>{html.escape(detail)}</p>
+<table style="margin:16px 0;font-size:14px;color:#45413b">
+<tr><td style="padding:2px 12px 2px 0;color:#7a746b">Device</td><td>{html.escape(device)}</td></tr>
+</table>
+<p><strong>Was this you?</strong> If so, there's nothing to do.</p>
+<p>If it wasn't you, reset your password right away and sign out of all devices in Settings → Security.</p>
+{_button(settings.app_url + "/signin", "Review my account")}"""
+    return send_email(to, f"Security alert: {title}", _layout(title, body))

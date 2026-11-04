@@ -21,9 +21,11 @@ import {
   MailWarning,
 } from 'lucide-react';
 import AuthPage from './components/Auth/AuthPage';
+import LegalPage from './components/Legal/LegalPage';
 import LandingPage from './components/Landing/LandingPage';
 import { LogoMark, Spinner, setDisplayPrefs } from './components/ui';
 import AssistantWidget from './components/Assistant/AssistantWidget';
+import IdleGuard from './components/IdleGuard';
 import { authAPI, chatAPI, errorMessage, type PublicConfig, type User } from './services/api';
 
 // App pages load on demand after sign-in, keeping the welcome page light.
@@ -38,10 +40,10 @@ const BankPage = lazy(() => import('./components/Bank/BankPage'));
 const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
 
 type Banner = { kind: 'ok' | 'error'; text: string } | null;
-type PublicView = 'landing' | 'signin' | 'signup';
+type PublicView = 'landing' | 'signin' | 'signup' | 'privacy' | 'terms';
 
-const viewFromPath = (): PublicView =>
-  window.location.pathname === '/signin' ? 'signin' : window.location.pathname === '/signup' ? 'signup' : 'landing';
+const PATH_VIEWS: Record<string, PublicView> = { '/signin': 'signin', '/signup': 'signup', '/privacy': 'privacy', '/terms': 'terms' };
+const viewFromPath = (): PublicView => PATH_VIEWS[window.location.pathname] ?? 'landing';
 
 const sections = [
   {
@@ -112,15 +114,36 @@ function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const params = new URLSearchParams(window.location.search);
+  // Email links carry their token in the URL fragment (#), which never reaches server logs.
+  // Older links used ?verify= / ?reset=, so both are accepted.
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, '') || window.location.search);
   const resetToken = params.get('reset');
 
-  const signedOut = useCallback(() => {
-    setUser(null);
+  const signedOut = useCallback((e?: Event) => {
+    const reason = e instanceof CustomEvent && typeof e.detail === 'string' ? e.detail : null;
+    setUser((was) => {
+      if (was && reason) {
+        setBanner({ kind: 'error', text: reason });
+        setView('signin');
+        window.history.replaceState({}, '', '/signin');
+      } else {
+        setView('landing');
+        window.history.replaceState({}, '', '/');
+      }
+      return null;
+    });
     setActiveTab('dashboard');
-    window.history.replaceState({}, '', '/');
-    setView('landing');
   }, []);
+
+  const idleTimeout = useCallback(async () => {
+    try {
+      await authAPI.logout();
+    } catch {
+      /* already signed out on the server */
+    }
+    const mins = config?.session_idle_minutes ?? 15;
+    window.dispatchEvent(new CustomEvent('zenty:signed-out', { detail: `For your security, you were signed out after ${mins} minutes of inactivity.` }));
+  }, [config?.session_idle_minutes]);
 
   // Apply display preferences, and open the user's chosen start page once per sign-in.
   const userId = user?.id;
@@ -220,6 +243,21 @@ function App() {
       setQuickBusy(false);
     }
   };
+
+  // Legal pages are reachable whether or not you're signed in.
+  if (view === 'privacy' || view === 'terms') {
+    return (
+      <LegalPage
+        doc={view}
+        onSwitch={(d) => navigate(d)}
+        onBack={() => {
+          window.history.replaceState({}, '', '/');
+          setView('landing');
+          window.scrollTo({ top: 0 });
+        }}
+      />
+    );
+  }
 
   if (booting) {
     return (
@@ -406,6 +444,7 @@ function App() {
       </div>
 
       <AssistantWidget firstName={(user.name || '').split(' ')[0]} />
+      <IdleGuard minutes={config?.session_idle_minutes ?? 15} onTimeout={idleTimeout} />
 
       {toast && (
         <div role="status" className="fixed bottom-6 left-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 rounded-2xl bg-ink px-5 py-4 text-sm text-white shadow-lift whitespace-pre-line">

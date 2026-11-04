@@ -1,9 +1,9 @@
 """Profile, preferences, password change, data export and account deletion."""
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import sms
+from .. import emails, sms
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
@@ -21,6 +21,8 @@ from ..models import (
 from ..security import (
     SESSION_COOKIE,
     current_user,
+    device_label,
+    record_event,
     token_hash,
     decrypt,
     end_all_sessions,
@@ -104,7 +106,7 @@ def _reauth(user: User, password: str | None) -> None:
 
 
 @router.post("/mfa")
-def toggle_mfa(body: MfaToggleIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def toggle_mfa(body: MfaToggleIn, request: Request, bg: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
     rate_limit(db, f"mfa-toggle:{user.id}", limit=10, window_seconds=900)
     _reauth(user, body.password)
     if body.enabled:
@@ -114,11 +116,15 @@ def toggle_mfa(body: MfaToggleIn, user: User = Depends(current_user), db: Sessio
             raise HTTPException(400, "Verify your phone number first.")
     user.mfa_enabled = body.enabled
     db.commit()
+    record_event(db, user, "mfa_enabled" if body.enabled else "mfa_disabled", request)
+    if not body.enabled:
+        bg.add_task(emails.send_security_alert, user.email, user.name, "Two-step sign-in turned off",
+                    "Two-step sign-in was just turned off for your Zenty account.", device_label(request))
     return {"user": user.public()}
 
 
 @router.post("/phone")
-def change_phone(body: PhoneIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def change_phone(body: PhoneIn, request: Request, bg: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
     rate_limit(db, f"phone-change:{user.id}", limit=5, window_seconds=3600)
     _reauth(user, body.password)
     phone = sms.normalize_phone(body.phone)
@@ -134,11 +140,14 @@ def change_phone(body: PhoneIn, user: User = Depends(current_user), db: Session 
     user.phone_verified = False
     user.mfa_enabled = False
     db.commit()
+    record_event(db, user, "phone_changed", request)
+    bg.add_task(emails.send_security_alert, user.email, user.name, "Phone number changed",
+                f"The phone number on your Zenty account was changed to one ending in {phone[-4:]}.", device_label(request))
     return {"verification_sent": False, "user": user.public()}
 
 
 @router.post("/phone/confirm")
-def confirm_phone(body: CodeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def confirm_phone(body: CodeIn, request: Request, bg: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
     rate_limit(db, f"phone-confirm:{user.id}", limit=10, window_seconds=900)
     if not user.pending_phone:
         raise HTTPException(400, "There's no number waiting to be confirmed.")
@@ -150,11 +159,14 @@ def confirm_phone(body: CodeIn, user: User = Depends(current_user), db: Session 
     user.pending_phone = None
     user.phone_verified = True
     db.commit()
+    record_event(db, user, "phone_changed", request)
+    bg.add_task(emails.send_security_alert, user.email, user.name, "Phone number changed",
+                f"The phone number on your Zenty account was changed to one ending in {(user.phone or '')[-4:]}.", device_label(request))
     return {"user": user.public()}
 
 
 @router.post("/password")
-def change_password(body: PasswordIn, request: Request, response: Response,
+def change_password(body: PasswordIn, request: Request, response: Response, bg: BackgroundTasks,
                     user: User = Depends(current_user), db: Session = Depends(get_db)):
     rate_limit(db, f"pw-change:{user.id}", limit=5, window_seconds=900)
     if user.password_hash and not verify_password(body.current_password or "", user.password_hash):
@@ -164,6 +176,9 @@ def change_password(body: PasswordIn, request: Request, response: Response,
         raise HTTPException(400, problem)
     user.password_hash = hash_password(body.new_password)
     db.commit()
+    record_event(db, user, "password_changed", request)
+    bg.add_task(emails.send_security_alert, user.email, user.name, "Password changed",
+                "The password for your Zenty account was just changed, and your other devices were signed out.", device_label(request))
     # Sign out every other device; keep this one signed in with a fresh session.
     end_all_sessions(db, user.id)
     from ..security import start_session
@@ -180,13 +195,21 @@ def sessions(request: Request, user: User = Depends(current_user), db: Session =
 
 
 @router.delete("/sessions/{sid}")
-def revoke_session(sid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def revoke_session(sid: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     s = db.get(AuthSession, sid)
     if not s or s.user_id != user.id:
         raise HTTPException(404, "Not found.")
     db.delete(s)
     db.commit()
+    record_event(db, user, "session_revoked", request)
     return {"ok": True}
+
+
+@router.get("/security-events")
+def security_events(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from ..models import SecurityEvent
+    rows = db.query(SecurityEvent).filter(SecurityEvent.user_id == user.id).order_by(SecurityEvent.created_at.desc()).limit(25).all()
+    return {"events": [e.to_dict() for e in rows]}
 
 
 @router.get("/export")
@@ -225,7 +248,8 @@ def delete_account(body: DeleteIn, request: Request, response: Response,
     goal_ids = [g.id for g in db.query(SavingsGoal.id).filter(SavingsGoal.user_id == uid)]
     if goal_ids:
         db.query(SavingsTransaction).filter(SavingsTransaction.goal_id.in_(goal_ids)).delete(synchronize_session=False)
-    for model in (Transaction, Subscription, BankAccount, BankItem, SavingsGoal, Budget, StockHolding, AuthSession):
+    from ..models import SecurityEvent
+    for model in (SecurityEvent, Transaction, Subscription, BankAccount, BankItem, SavingsGoal, Budget, StockHolding, AuthSession):
         db.query(model).filter(model.user_id == uid).delete(synchronize_session=False)
     db.delete(user)
     db.commit()
