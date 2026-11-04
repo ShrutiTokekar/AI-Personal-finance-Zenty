@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Plus, Receipt, Search, Trash2 } from 'lucide-react';
+import { Building2, CreditCard, Landmark, LineChart, PencilLine, PiggyBank, Plus, Receipt, Search, Trash2, Wallet } from 'lucide-react';
 import AddTransactionModal from './AddTransactionModal';
-import { errorMessage, transactionAPI, type Transaction } from '../../services/api';
+import { errorMessage, transactionAPI, type AccountKind, type Transaction } from '../../services/api';
 import { CategoryTile, EmptyState, Money, PageHeader, Spinner, relativeDay } from '../ui';
 
 type Filter = 'all' | 'expense' | 'income';
+type AccountFilter = 'all' | 'manual' | AccountKind;
+
+const KIND_META: Record<AccountKind, { label: string; icon: typeof Wallet }> = {
+  checking: { label: 'Checking / debit', icon: Wallet },
+  savings: { label: 'Savings', icon: PiggyBank },
+  credit: { label: 'Credit card', icon: CreditCard },
+  loan: { label: 'Loan', icon: Landmark },
+  investment: { label: 'Investment', icon: LineChart },
+  other: { label: 'Other account', icon: Building2 },
+};
 
 export default function TransactionList() {
   const [items, setItems] = useState<Transaction[]>([]);
@@ -13,6 +23,7 @@ export default function TransactionList() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [category, setCategory] = useState('');
+  const [account, setAccount] = useState<AccountFilter>('all');
   const [error, setError] = useState('');
 
   const load = async () => {
@@ -49,14 +60,21 @@ export default function TransactionList() {
   };
 
   const categories = useMemo(() => [...new Set(items.map((t) => t.category))].sort(), [items]);
+  const accountKinds = useMemo(() => {
+    const kinds = new Set<AccountKind>();
+    items.forEach((t) => { if (t.account) kinds.add(t.account.kind); });
+    return (Object.keys(KIND_META) as AccountKind[]).filter((k) => kinds.has(k));
+  }, [items]);
+  const hasManual = items.some((t) => !t.account);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((t) =>
       (filter === 'all' || t.type === filter) &&
       (!category || t.category === category) &&
+      (account === 'all' || (account === 'manual' ? !t.account : t.account?.kind === account)) &&
       (!q || `${t.description} ${t.category}`.toLowerCase().includes(q)));
-  }, [items, query, filter, category]);
+  }, [items, query, filter, category, account]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Transaction[]>();
@@ -121,6 +139,23 @@ export default function TransactionList() {
           )}
         </div>
 
+        {accountKinds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Account</span>
+            {(['all', ...accountKinds, ...(hasManual ? ['manual'] : [])] as AccountFilter[]).map((k) => {
+              const meta = k === 'all' ? { label: 'All', icon: Building2 } : k === 'manual' ? { label: 'Added manually', icon: PencilLine } : KIND_META[k];
+              const Icon = meta.icon;
+              return (
+                <button key={k} onClick={() => setAccount(k)} aria-pressed={account === k}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    account === k ? 'border-ink bg-ink text-white' : 'border-line bg-white text-gray-600 hover:text-ink'}`}>
+                  <Icon className="h-3.5 w-3.5" /> {meta.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {error && <p className="m-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
         {loading ? (
@@ -143,9 +178,16 @@ export default function TransactionList() {
                       <CategoryTile name={t.category} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium text-ink">{t.description || t.category}</p>
-                        <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <p className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                           {t.category}
-                          {t.source === 'bank' && <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5"><Building2 className="h-3 w-3" /> Bank</span>}
+                          {t.account ? (() => {
+                            const Icon = KIND_META[t.account.kind].icon;
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                                <Icon className="h-3 w-3" /> {t.account.name}{t.account.mask ? ` ••${t.account.mask}` : ''} · {KIND_META[t.account.kind].label}
+                              </span>
+                            );
+                          })() : t.source === 'bank' && <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5"><Building2 className="h-3 w-3" /> Bank</span>}
                         </p>
                       </div>
                       <Money value={t.type === 'income' ? t.amount : -t.amount} sign

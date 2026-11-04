@@ -161,10 +161,14 @@ def test_bank_token_encrypted_and_never_returned(monkeypatch):
     def fake_plaid(path, payload):
         return {
             "/item/public_token/exchange": {"access_token": secret_token, "item_id": "item-1"},
-            "/accounts/get": {"item": {}, "accounts": [{"account_id": "acc-1", "name": "Checking", "mask": "1234",
-                                                        "type": "depository", "balances": {"current": 900.0}}]},
-            "/transactions/sync": {"added": [{"transaction_id": "t1", "amount": 12.0, "date": "2026-10-30",
-                                              "name": "Coffee", "personal_finance_category": {"primary": "FOOD_AND_DRINK"}}],
+            "/accounts/get": {"item": {}, "accounts": [
+                {"account_id": "acc-1", "name": "Checking", "mask": "1234", "type": "depository", "subtype": "checking", "balances": {"current": 900.0}},
+                {"account_id": "acc-2", "name": "Sapphire", "mask": "9876", "type": "credit", "subtype": "credit card", "balances": {"current": 250.0}},
+                {"account_id": "acc-3", "name": "High-yield", "mask": "5555", "type": "depository", "subtype": "savings", "balances": {"current": 5000.0}}]},
+            "/transactions/sync": {"added": [
+                {"transaction_id": "t1", "account_id": "acc-1", "amount": 12.0, "date": "2026-10-30", "name": "Coffee", "personal_finance_category": {"primary": "FOOD_AND_DRINK"}},
+                {"transaction_id": "t2", "account_id": "acc-2", "amount": 80.0, "date": "2026-10-29", "name": "Amazon", "personal_finance_category": {"primary": "GENERAL_MERCHANDISE"}},
+                {"transaction_id": "t3", "account_id": "acc-3", "amount": -25.0, "date": "2026-10-28", "name": "Interest", "personal_finance_category": {"primary": "INCOME"}}],
                                    "modified": [], "removed": [], "next_cursor": "c1", "has_more": False},
         }[path]
 
@@ -176,7 +180,12 @@ def test_bank_token_encrypted_and_never_returned(monkeypatch):
     with SessionLocal() as db:
         item = db.query(BankItem).one()
         assert secret_token.encode() not in item.access_token_enc
-    assert any(t["source"] == "bank" for t in c.get("/api/transactions").json()["transactions"])
+    txns = {t["description"]: t for t in c.get("/api/transactions").json()["transactions"] if t["source"] == "bank"}
+    assert txns["Coffee"]["account"]["kind"] == "checking" and txns["Coffee"]["account"]["mask"] == "1234"
+    assert txns["Amazon"]["account"]["kind"] == "credit"
+    assert txns["Interest"]["account"]["kind"] == "savings" and txns["Interest"]["type"] == "income"
+    kinds = {a["kind"] for i in c.get("/api/bank/accounts").json()["items"] for a in i["accounts"]}
+    assert kinds == {"checking", "credit", "savings"}
 
 
 def test_cron_requires_secret():
@@ -352,3 +361,32 @@ def test_db_upgrade_adds_missing_columns(tmp_path):
         dbmod.engine = old
     cols = {c["name"] for c in inspect(eng).get_columns("users")}
     assert {"phone", "mfa_enabled", "phone_verified"} <= cols
+
+
+def test_assistant_delete_needs_confirmation_and_plans(monkeypatch):
+    c = client()
+    signup(c, "planner@example.com")
+    c.post("/api/transactions", json={"amount": 3000, "category": "Salary", "type": "income"})
+    c.post("/api/transactions", json={"amount": 1200, "category": "Rent", "type": "expense", "description": "Rent"})
+    c.post("/api/transactions", json={"amount": 400, "category": "Food & Dining", "type": "expense", "description": "Restaurants"})
+    c.post("/api/transactions", json={"amount": 4.5, "category": "Food & Dining", "type": "expense", "description": "Blue Bottle Coffee"})
+
+    r = c.post("/api/chat", json={"message": "delete the 4.50 coffee"}).json()
+    assert r["type"] == "confirm" and "Blue Bottle" in r["message"]
+    action = r["actions"][0]
+    assert action["kind"] == "delete_transaction"
+    # nothing is deleted until the app confirms
+    assert len(c.get("/api/transactions").json()["transactions"]) == 4
+    assert c.delete(f"/api/transactions/{action['id']}").status_code == 200
+
+    r = c.post("/api/chat", json={"message": "remove my food budget"}).json()
+    assert r["type"] != "confirm"
+
+    plan = c.post("/api/chat", json={"message": "make me a budget plan"}).json()
+    assert plan["type"] == "plan" and plan["actions"][0]["kind"] == "apply_budgets"
+    budgets = {b["category"]: b["monthly_limit"] for b in plan["actions"][0]["budgets"]}
+    assert budgets["Rent"] == 1200 and budgets["Food & Dining"] < 400  # needs kept, wants trimmed
+
+    c.post("/api/savings/goals", json={"name": "Trip", "target_amount": 1200})
+    g = c.post("/api/chat", json={"message": "plan my goals"}).json()
+    assert "Trip" in g["message"]

@@ -38,8 +38,115 @@ HELP = (
     "• \"show my budgets\" or \"set budget groceries 400\"\n"
     "• \"show savings goals\" or \"save 50 to vacation\"\n"
     "• \"how are my stocks?\"\n"
+    "• \"delete my last transaction\"\n"
+    "• \"make me a budget plan\" or \"plan my goals\"\n"
     "• \"predict next month\" or \"give me advice\""
 )
+
+NEEDS = ("rent", "bill", "utilit", "grocer", "transport", "health", "insurance", "loan", "mortgage", "medical", "gas")
+
+
+def _is_need(category: str) -> bool:
+    c = category.lower()
+    return any(k in c for k in NEEDS)
+
+
+def _monthly_averages(db: Session, user_id: int, months: int = 3):
+    """Average monthly income and spending per category over recent complete months
+    (falls back to this month if there is no history yet)."""
+    from collections import defaultdict
+    start = insights.month_start()
+    since = start
+    for _ in range(months):  # step back whole calendar months
+        since = insights.prev_month_start(since)
+    rows = db.query(Transaction).filter(Transaction.user_id == user_id, Transaction.date >= since, Transaction.date < start).all()
+    span = len({t.date.strftime("%Y-%m") for t in rows}) or 0
+    if span == 0:
+        rows = db.query(Transaction).filter(Transaction.user_id == user_id, Transaction.date >= start).all()
+        span = 1
+    income = sum(t.amount for t in rows if t.type == "income") / span
+    cats: dict[str, float] = defaultdict(float)
+    for t in rows:
+        if t.type == "expense":
+            cats[t.category] += t.amount / span
+    return income, dict(cats)
+
+
+def _budget_plan(db: Session, user_id: int) -> dict:
+    income, cats = _monthly_averages(db, user_id)
+    if not cats:
+        return {"type": "text", "message": "I need a few weeks of spending to build a plan. Log some expenses or link your bank, then ask again."}
+    needs = {c: v for c, v in cats.items() if _is_need(c)}
+    wants = {c: v * 0.85 for c, v in cats.items() if not _is_need(c)}  # trim wants by 15%
+    if income > 0:
+        cap = income * 0.30
+        if sum(wants.values()) > cap:
+            scale = cap / sum(wants.values())
+            wants = {c: v * scale for c, v in wants.items()}
+    plan = {**{c: round(v / 5) * 5 or 5 for c, v in needs.items()}, **{c: round(v / 5) * 5 or 5 for c, v in wants.items()}}
+    lines = []
+    if income > 0:
+        save = income - sum(plan.values())
+        lines.append(f"Based on your last few months, you bring in about {_money(income)}/month.")
+        lines.append(f"• Needs (bills, groceries, transport): {_money(sum(needs.values()))} ({sum(needs.values()) / income * 100:.0f}%)")
+        lines.append(f"• Wants, trimmed 15%: {_money(sum(plan[c] for c in wants))} ({sum(plan[c] for c in wants) / income * 100:.0f}%)")
+        lines.append(f"• That leaves {_money(save)}/month to save ({save / income * 100:.0f}%). The 50/30/20 rule aims for 20%+.")
+    else:
+        lines.append("Here's a plan based on your recent spending, with wants trimmed by 15%.")
+    lines.append("")
+    lines.append("Suggested monthly budgets:")
+    for c, v in sorted(plan.items(), key=lambda kv: -kv[1])[:8]:
+        lines.append(f"• {c}: {_money(v)}")
+    return {
+        "type": "plan",
+        "message": "\n".join(lines),
+        "actions": [{"label": "Apply these budgets", "kind": "apply_budgets",
+                     "budgets": [{"category": c, "monthly_limit": v} for c, v in plan.items()]}],
+    }
+
+
+def _goal_plan(db: Session, user_id: int) -> dict:
+    goals = db.query(SavingsGoal).filter(SavingsGoal.user_id == user_id, SavingsGoal.completed.is_(False)).all()
+    if not goals:
+        return {"type": "text", "message": "You don't have any active goals yet. Try \"create goal emergency fund 5000\" and I'll plan it with you."}
+    income, cats = _monthly_averages(db, user_id)
+    spare = max(0.0, income - sum(cats.values()))
+    lines = ["Here's your goals game plan:"]
+    now = utcnow()
+    for g in goals:
+        left = max(0.0, g.target_amount - g.current_amount)
+        if g.deadline and g.deadline > now:
+            months = max(1, (g.deadline.year - now.year) * 12 + g.deadline.month - now.month)
+            lines.append(f"• {g.name}: save {_money(left / months)}/month for {months} months to hit {_money(g.target_amount)} on time.")
+        elif spare > 0:
+            per = spare / len(goals) * 0.5
+            months = left / per if per else 0
+            lines.append(f"• {g.name}: putting {_money(per)}/month toward it gets you there in about {months:.0f} months.")
+        else:
+            lines.append(f"• {g.name}: {_money(left)} to go. Free up room in your budget, or set a deadline and I'll work out the monthly amount.")
+    if spare > 0:
+        lines.append(f"\nYou have roughly {_money(spare)}/month left after spending, so these are realistic.")
+    return {"type": "text", "message": "\n".join(lines)}
+
+
+def _find_transaction(db: Session, user_id: int, low: str):
+    recent = db.query(Transaction).filter(Transaction.user_id == user_id).order_by(Transaction.date.desc(), Transaction.id.desc()).limit(80).all()
+    if not recent:
+        return None
+    if re.search(r"\b(last|latest|recent|undo|previous)\b", low):
+        return recent[0]
+    amt = _amount(low)
+    words = [w for w in re.findall(r"[a-z]{3,}", low) if w not in {"delete", "remove", "transaction", "the", "my", "for", "and", "that", "this", "expense", "income", "spent", "charge"}]
+    for t in recent:
+        text = f"{t.description or ''} {t.category}".lower()
+        if amt is not None and abs(t.amount - amt) > 0.005:
+            continue
+        if words and not any(w in text for w in words):
+            continue
+        if amt is None and not words:
+            continue
+        return t
+    return None
 
 
 def _amount(text: str) -> float | None:
@@ -74,6 +181,24 @@ def respond(db: Session, user_id: int, message: str) -> dict:
     def reply(msg: str) -> dict:
         # The chat window shows plain text, so drop markdown bold markers.
         return {"type": "text", "message": msg.replace("**", "")}
+
+    # --- delete a transaction (always asks to confirm in the app)
+    if re.search(r"\b(delete|remove|undo|cancel)\b", low) and not re.search(r"\b(budget|goal|stock|account)s?\b", low):
+        t = _find_transaction(db, user_id, low)
+        if not t:
+            return reply("I couldn't find that one. Try \"delete my last transaction\" or \"delete the 4.50 coffee\".")
+        when = f"{t.date:%b} {t.date.day}" if t.date else ""
+        sign = "+" if t.type == "income" else "−"
+        return {"type": "confirm",
+                "message": f"Delete {t.description or t.category} ({sign}{_money(t.amount)}, {when})?",
+                "actions": [{"label": "Yes, delete", "kind": "delete_transaction", "id": t.id},
+                            {"label": "Keep it", "kind": "dismiss"}]}
+
+    # --- game plans
+    if re.search(r"game ?plan|budget(ing)? plan|plan (my|a) budget|help me budget|make (me )?a budget|50/30/20", low):
+        return _budget_plan(db, user_id)
+    if re.search(r"plan (my|for my)? ?goals?|goals? plan|reach my goals?|how (long|soon).*goal", low):
+        return _goal_plan(db, user_id)
 
     # --- savings contributions: "save 50 to vacation" / "add 100 to emergency fund"
     m = re.search(rf"(?:save|add|put|contribute)\s+{AMOUNT}\s+(?:to|into|towards?)\s+(?:my\s+)?(.+)", low)

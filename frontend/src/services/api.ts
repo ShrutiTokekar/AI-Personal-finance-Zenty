@@ -105,6 +105,7 @@ export interface BankAccount {
   mask: string | null;
   type: string;
   subtype: string | null;
+  kind?: AccountKind;
   current_balance: number | null;
   available_balance: number | null;
   currency: string;
@@ -134,7 +135,10 @@ export interface Transaction {
   date?: string;
   type: 'income' | 'expense';
   source?: 'manual' | 'bank';
+  account?: { id: number; name: string; mask: string | null; kind: AccountKind } | null;
 }
+
+export type AccountKind = 'checking' | 'savings' | 'credit' | 'loan' | 'investment' | 'other';
 
 export interface Summary {
   total_income: number;
@@ -309,8 +313,23 @@ export const overviewAPI = {
   get: () => api.get<Overview>('/overview'),
 };
 
+export type AssistantAction =
+  | { label: string; kind: 'delete_transaction'; id: number }
+  | { label: string; kind: 'apply_budgets'; budgets: { category: string; monthly_limit: number }[] }
+  | { label: string; kind: 'dismiss' };
+
+export interface AssistantReply {
+  type: 'text' | 'confirm' | 'plan';
+  message: string;
+  actions?: AssistantAction[];
+}
+
 export const chatAPI = {
-  sendMessage: (message: string) => api.post('/chat', { message }),
+  sendMessage: (message: string) => api.post<AssistantReply>('/chat', { message }),
+};
+
+export const anomaliesAPI = {
+  get: () => api.get<{ anomalies: Transaction[] }>('/anomalies'),
 };
 
 export const predictionAPI = {

@@ -84,6 +84,7 @@ def _sync_transactions(db: Session, user: User, item: BankItem) -> int:
     token = decrypt(item.access_token_enc)
     cursor = item.sync_cursor
     added_count = 0
+    accounts_by_plaid = {a.plaid_account_id: a for a in db.query(BankAccount).filter(BankAccount.item_id == item.id)}
     for _ in range(10):  # page through updates (max ~5,000 txns per sync)
         payload = {"access_token": token, "count": 500}
         if cursor:
@@ -105,6 +106,8 @@ def _sync_transactions(db: Session, user: User, item: BankItem) -> int:
             row.category = _category(t)[:100]
             row.description = (t.get("merchant_name") or t.get("name") or "")[:500]
             row.date = datetime.fromisoformat(t["date"])
+            acct = accounts_by_plaid.get(t.get("account_id"))
+            row.bank_account_id = acct.id if acct else None
         removed = [r["transaction_id"] for r in data.get("removed", [])]
         if removed:
             db.query(Transaction).filter(Transaction.user_id == user.id,
@@ -213,6 +216,10 @@ def unlink(item_id: int, user: User = Depends(verified_user), db: Session = Depe
         _plaid("/item/remove", {"access_token": decrypt(item.access_token_enc)})
     except HTTPException:
         pass  # still remove our copy even if Plaid already revoked it
+    acct_ids = [a.id for a in db.query(BankAccount.id).filter(BankAccount.item_id == item.id)]
+    if acct_ids:
+        db.query(Transaction).filter(Transaction.bank_account_id.in_(acct_ids)).update(
+            {Transaction.bank_account_id: None}, synchronize_session=False)
     db.query(BankAccount).filter(BankAccount.item_id == item.id).delete()
     db.delete(item)
     db.commit()

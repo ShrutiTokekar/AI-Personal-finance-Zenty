@@ -117,7 +117,7 @@ def delete_account(body: DeleteIn, request: Request, response: Response,
     goal_ids = [g.id for g in db.query(SavingsGoal.id).filter(SavingsGoal.user_id == uid)]
     if goal_ids:
         db.query(SavingsTransaction).filter(SavingsTransaction.goal_id.in_(goal_ids)).delete(synchronize_session=False)
-    for model in (BankAccount, BankItem, SavingsGoal, Budget, StockHolding, Transaction, AuthSession):
+    for model in (Transaction, BankAccount, BankItem, SavingsGoal, Budget, StockHolding, AuthSession):
         db.query(model).filter(model.user_id == uid).delete(synchronize_session=False)
     db.delete(user)
     db.commit()

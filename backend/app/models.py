@@ -113,11 +113,16 @@ class Transaction(Base):
     type: Mapped[str] = mapped_column(String(20))  # income | expense
     source: Mapped[str] = mapped_column(String(20), default="manual")  # manual | bank
     external_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    bank_account_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("bank_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    account: Mapped["BankAccount | None"] = relationship(lazy="joined")
 
     __table_args__ = (UniqueConstraint("user_id", "external_id", name="uq_txn_external"),)
 
     def to_dict(self):
+        acct = self.account
         return {
+            "account": {"id": acct.id, "name": acct.name, "mask": acct.mask, "kind": acct.kind} if acct else None,
             "id": self.id,
             "date": iso(self.date),
             "amount": self.amount,
@@ -244,9 +249,20 @@ class BankAccount(Base):
     available_balance: Mapped[float | None] = mapped_column(Float, nullable=True)
     currency: Mapped[str] = mapped_column(String(8), default="USD")
 
+    @property
+    def kind(self) -> str:
+        """checking | savings | credit | loan | investment | other"""
+        sub = (self.subtype or "").lower()
+        if self.type == "depository":
+            return "savings" if sub in {"savings", "money market", "cd", "hsa"} else "checking"
+        if self.type in {"credit", "loan", "investment"}:
+            return self.type
+        return "other"
+
     def to_dict(self):
         return {
             "id": self.id,
+            "kind": self.kind,
             "item_id": self.item_id,
             "name": self.name,
             "mask": self.mask,

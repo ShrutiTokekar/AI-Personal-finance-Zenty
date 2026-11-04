@@ -10,7 +10,6 @@ import {
   Loader2,
   LogOut,
   Menu,
-  MessageSquare,
   PiggyBank,
   Receipt,
   Settings,
@@ -23,11 +22,11 @@ import {
 import AuthPage from './components/Auth/AuthPage';
 import LandingPage from './components/Landing/LandingPage';
 import { LogoMark, Spinner } from './components/ui';
+import AssistantWidget from './components/Assistant/AssistantWidget';
 import { authAPI, chatAPI, errorMessage, type PublicConfig, type User } from './services/api';
 
 // App pages load on demand after sign-in, keeping the welcome page light.
 const Dashboard = lazy(() => import('./components/Dashboard/Dashbord'));
-const ChatInterface = lazy(() => import('./components/Chat/ChatInterface'));
 const TransactionsList = lazy(() => import('./components/Transactions/TransactionList'));
 const Analytics = lazy(() => import('./components/Analytics/AnalyticsPage'));
 const Savings = lazy(() => import('./components/Savings/SavingsPage'));
@@ -63,7 +62,6 @@ const sections = [
     label: 'Understand',
     items: [
       { id: 'analytics', name: 'Insights', icon: TrendingUp },
-      { id: 'chat', name: 'Assistant', icon: MessageSquare },
     ],
   },
 ];
@@ -249,7 +247,6 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'chat': return <ChatInterface />;
       case 'transactions': return <TransactionsList />;
       case 'savings': return <Savings />;
       case 'analytics': return <Analytics />;
@@ -393,6 +390,8 @@ function App() {
           <Suspense fallback={<Spinner />}>{renderContent()}</Suspense>
         </main>
       </div>
+
+      <AssistantWidget firstName={(user.name || '').split(' ')[0]} />
 
       {toast && (
         <div role="status" className="fixed bottom-6 left-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 rounded-2xl bg-ink px-5 py-4 text-sm text-white shadow-lift whitespace-pre-line">

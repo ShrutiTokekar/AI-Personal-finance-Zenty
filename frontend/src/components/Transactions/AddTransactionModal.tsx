@@ -1,7 +1,7 @@
 // frontend/src/components/Transactions/AddTransactionModal.tsx
 import { useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
-import { type Transaction } from '../../services/api';
+import { errorMessage, type Transaction } from '../../services/api';
 
 interface AddTransactionModalProps {
   onClose: () => void;
@@ -46,26 +46,13 @@ export default function AddTransactionModal({ onClose, onSubmit }: AddTransactio
         type: formData.type,
         date: formData.date,
       };
-
-      console.log('Submitting transaction:', transactionData);
       
       await onSubmit(transactionData);
       
       // Success - modal will be closed by parent
       
-    } catch (error: any) {
-      console.error('Error submitting transaction:', error);
-      
-      // Extract error message
-      let errorMessage = 'Failed to add transaction. Please try again.';
-      
-      if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setError(errorMessage);
+    } catch (error) {
+      setError(errorMessage(error, 'Failed to add transaction. Please try again.'));
     } finally {
       setSubmitting(false);
     }

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { LogoMark } from '../ui';
 import RakeRoad from './RakeRoad';
+import LandingAssistant from '../Assistant/LandingAssistant';
 
 interface Props {
   onSignIn: () => void;
@@ -276,9 +277,9 @@ function TypingDemo() {
 function PrivacyDemo() {
   const [hidden, setHidden] = useState(true);
   return (
-    <button onClick={() => setHidden((h) => !h)} className="flex w-full items-center justify-between rounded-xl border border-line bg-white px-4 py-3 shadow-card">
+    <button onClick={() => setHidden((h) => !h)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 shadow-card">
       <span className="text-sm text-gray-500">Balance</span>
-      <span className={`font-display text-xl font-semibold text-ink transition ${hidden ? 'blur-[7px]' : ''}`}>$12,480.22</span>
+      <span className={`num ml-auto min-w-0 truncate font-display text-lg font-semibold text-ink transition ${hidden ? 'blur-[7px]' : ''}`}>$12,480.22</span>
       {hidden ? <EyeOff className="h-4 w-4 text-gray-400" /> : <Eye className="h-4 w-4 text-gray-400" />}
     </button>
   );
@@ -480,7 +481,7 @@ export default function LandingPage({ onSignIn, onSignUp }: Props) {
               <div className="relative flex h-full flex-col justify-between gap-8 sm:flex-row sm:items-end">
                 <div className="max-w-sm">
                   <Leaf className="h-6 w-6 text-matcha-300" />
-                  <h3 className="mt-4 font-display text-3xl font-semibold">Zen Score</h3>
+                  <h3 className="mt-4 font-display text-3xl font-semibold text-white">Zen Score</h3>
                   <p className="mt-2 text-white/60">One number from 0 to 100 that sums up your financial health: savings, budgets, spending pace and goals, with a tip for each.</p>
                 </div>
                 <div className="font-display text-8xl font-semibold leading-none text-saffron-300 transition group-hover:scale-105">82</div>
@@ -600,6 +601,7 @@ export default function LandingPage({ onSignIn, onSignUp }: Props) {
           <p>© {new Date().getFullYear()} Zenty. Zenty is not a bank and does not give financial advice.</p>
         </div>
       </footer>
+      <LandingAssistant onSignUp={onSignUp} onSignIn={onSignIn} />
     </div>
   );
 }

@@ -57,11 +57,11 @@ def create_transaction(body: TransactionIn, user: User = Depends(current_user), 
 
 
 @router.get("/transactions")
-def list_transactions(limit: int = 100, category: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_transactions(limit: int = 300, category: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     q = db.query(Transaction).filter(Transaction.user_id == user.id)
     if category:
         q = q.filter(Transaction.category == category)
-    rows = q.order_by(Transaction.date.desc()).limit(max(1, min(limit, 500))).all()
+    rows = q.order_by(Transaction.date.desc()).limit(max(1, min(limit, 1000))).all()
     return {"transactions": [t.to_dict() for t in rows]}
 
 

@@ -1,114 +1,143 @@
-// frontend/src/components/Analytics/AnalyticsPage.tsx
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp, AlertCircle, DollarSign } from 'lucide-react';
-import { predictionAPI, adviceAPI } from '../../services/api';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, CalendarDays, Leaf, Lightbulb, Receipt, TrendingUp } from 'lucide-react';
+import { adviceAPI, anomaliesAPI, overviewAPI, predictionAPI, type Overview, type Transaction } from '../../services/api';
+import SpendingCalendar from '../SpendingCalendar';
+import { Card, CategoryTile, EmptyState, Money, PageHeader, Spinner, relativeDay } from '../ui';
 
 export default function AnalyticsPage() {
-  const [predictions, setPredictions] = useState<any>(null);
-  const [advice, setAdvice] = useState<string>('');
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [predictions, setPredictions] = useState<Record<string, number>>({});
+  const [advice, setAdvice] = useState('');
+  const [unusual, setUnusual] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
+    const load = async () => {
+      try {
+        const [o, p, a, u] = await Promise.all([overviewAPI.get(), predictionAPI.predictNextMonth(), adviceAPI.getAdvice(), anomaliesAPI.get()]);
+        setOverview(o.data);
+        setPredictions(p.data.predictions || {});
+        setAdvice(a.data.advice);
+        setUnusual(u.data.anomalies);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+    window.addEventListener('zenty:data-changed', load);
+    return () => window.removeEventListener('zenty:data-changed', load);
   }, []);
 
-  const loadData = async () => {
-    try {
-      const [predRes, adviceRes] = await Promise.all([
-        predictionAPI.predictNextMonth(),
-        adviceAPI.getAdvice()
-      ]);
+  if (loading || !overview) return <Spinner />;
 
-      setPredictions(predRes.data.predictions);
-      setAdvice(adviceRes.data.advice);
-    } catch (error) {
-      console.error('Failed to load analytics:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
+  const now = new Date();
+  const monthName = now.toLocaleDateString(undefined, { month: 'long' });
+  const daily = overview.daily.filter((d) => !d.future);
+  const spendDays = daily.filter((d) => d.amount > 0);
+  const total = daily.reduce((s, d) => s + d.amount, 0);
+  const avg = daily.length ? total / daily.length : 0;
+  const heaviest = spendDays.reduce<{ day: number; amount: number } | null>((m, d) => (!m || d.amount > m.amount ? d : m), null);
+  const noSpend = daily.length - spendDays.length;
+  const byWeekday = Array.from({ length: 7 }, () => 0);
+  daily.forEach((d) => { byWeekday[new Date(now.getFullYear(), now.getMonth(), d.day).getDay()] += d.amount; });
+  const topWeekday = byWeekday.indexOf(Math.max(...byWeekday));
+  const preds = Object.entries(predictions).sort((a, b) => b[1] - a[1]);
+  const predTotal = preds.reduce((s, [, v]) => s + v, 0);
+  const predMax = preds[0]?.[1] || 0;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Analytics & Insights</h1>
-        <p className="mt-2 text-gray-600">Predictions and tips based on your own spending</p>
+      <PageHeader title="Insights" subtitle="Patterns, predictions and tips from your own spending." />
+
+      {/* Advice + Zen breakdown */}
+      <div className="grid gap-6 lg:grid-cols-5">
+        <section className="flex gap-4 rounded-3xl border border-lilac-200 bg-lilac-50 p-6 lg:col-span-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-lilac-500 text-white"><Lightbulb className="h-5 w-5" /></span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-lilac-600">This month's advice</p>
+            <p className="mt-2 leading-relaxed text-ink">{advice || 'Add a few transactions and Zenty will start spotting patterns for you.'}</p>
+          </div>
+        </section>
+        <Card title={`Zen Score · ${overview.zen.score}`} icon={Leaf} className="lg:col-span-2">
+          <ul className="space-y-3">
+            {overview.zen.factors.map((f) => (
+              <li key={f.key}>
+                <div className="flex justify-between text-sm"><span className="text-gray-600">{f.label}</span><span className="num font-semibold text-ink">{f.points}/{f.max}</span></div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-full rounded-full bg-gradient-to-r from-saffron-400 to-primary-500" style={{ width: `${(f.points / f.max) * 100}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       </div>
 
-      {/* Advice */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-primary-50 to-blue-50 rounded-xl p-6 border border-primary-100"
-      >
-        <div className="flex items-start space-x-3">
-          <div className="p-2 bg-primary-100 rounded-lg">
-            <AlertCircle className="h-6 w-6 text-primary-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              💡 Personalized Financial Advice
-            </h3>
-            <div className="text-gray-700 whitespace-pre-line">
-              {advice || 'Add more transactions to get personalized advice!'}
+      {/* Spending calendar */}
+      <Card title={`${monthName} spending calendar`} icon={CalendarDays}>
+        <div className="grid gap-8 lg:grid-cols-[1fr_260px]">
+          <SpendingCalendar days={overview.daily} detailed />
+          <dl className="grid grid-cols-2 gap-4 self-start lg:grid-cols-1">
+            <div className="rounded-2xl bg-gray-50 p-4">
+              <dt className="text-xs font-medium text-gray-500">Spent so far</dt>
+              <dd className="mt-1 font-display text-2xl font-semibold text-ink"><Money value={total} cents={false} /></dd>
             </div>
-          </div>
+            <div className="rounded-2xl bg-gray-50 p-4">
+              <dt className="text-xs font-medium text-gray-500">Daily average</dt>
+              <dd className="mt-1 font-display text-2xl font-semibold text-ink"><Money value={avg} cents={false} /></dd>
+            </div>
+            <div className="rounded-2xl bg-gray-50 p-4">
+              <dt className="text-xs font-medium text-gray-500">Heaviest day</dt>
+              <dd className="mt-1 font-semibold text-ink">
+                {heaviest ? <>{now.toLocaleDateString(undefined, { month: 'short' })} {heaviest.day} · <Money value={heaviest.amount} cents={false} /></> : '—'}
+              </dd>
+            </div>
+            <div className="rounded-2xl bg-primary-50 p-4">
+              <dt className="text-xs font-medium text-primary-700">No-spend days</dt>
+              <dd className="mt-1 font-semibold text-primary-800">{noSpend} so far{total > 0 && ` · busiest on ${['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][topWeekday]}`}</dd>
+            </div>
+          </dl>
         </div>
-      </motion.div>
+      </Card>
 
-      {/* Predictions */}
-      {predictions && Object.keys(predictions).length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <TrendingUp className="h-5 w-5 mr-2 text-primary-600" />
-            Next Month Predictions
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(predictions).map(([category, data]: [string, any]) => (
-              <motion.div
-                key={category}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="p-4 bg-gray-50 rounded-lg border border-gray-200"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600 capitalize">
-                    {category}
-                  </span>
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="text-2xl font-bold text-gray-900">
-                  ${data.total?.toFixed(2) || '0.00'}
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Avg: ${data.daily_avg?.toFixed(2) || '0.00'}/day
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Next month */}
+        <Card title="Next month, predicted" icon={TrendingUp} action={predTotal > 0 ? <span className="text-sm text-gray-500">≈ <Money value={predTotal} cents={false} /></span> : undefined}>
+          {preds.length === 0 ? (
+            <EmptyState icon={TrendingUp} title="Not enough history yet" text="Predictions appear after one full month of expenses." />
+          ) : (
+            <ul className="space-y-3.5">
+              {preds.slice(0, 7).map(([cat, v]) => (
+                <li key={cat}>
+                  <div className="flex justify-between text-sm"><span className="font-medium text-ink">{cat}</span><Money value={v} cents={false} className="text-gray-600" /></div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100">
+                    <div className="h-full rounded-full bg-lilac-400" style={{ width: `${(v / predMax) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
-      {(!predictions || Object.keys(predictions).length === 0) && (
-        <div className="bg-white rounded-xl shadow-sm p-12 border border-gray-100 text-center">
-          <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Not Enough Data
-          </h3>
-          <p className="text-gray-600">
-            Add at least one full month of expenses to see predictions
-          </p>
-        </div>
-      )}
+        {/* Unusual spending */}
+        <Card title="Unusual spending" icon={AlertTriangle}>
+          {unusual.length === 0 ? (
+            <EmptyState icon={Receipt} title="Nothing unusual" text="Zenty flags expenses that are much bigger than your normal for that category." />
+          ) : (
+            <ul className="-mx-2 divide-y divide-line">
+              {unusual.slice(0, 6).map((t) => (
+                <li key={t.id} className="flex items-center gap-3 px-2 py-3">
+                  <CategoryTile name={t.category} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">{t.description || t.category}</p>
+                    <p className="text-xs text-gray-500">{t.category} · {t.date ? relativeDay(t.date) : ''}</p>
+                  </div>
+                  <Money value={t.amount} className="text-sm font-semibold text-ink" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
