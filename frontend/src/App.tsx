@@ -21,6 +21,7 @@ import {
   MailWarning,
 } from 'lucide-react';
 import AuthPage from './components/Auth/AuthPage';
+import LegalPage from './components/Legal/LegalPage';
 import LandingPage from './components/Landing/LandingPage';
 import { LogoMark, Spinner, setDisplayPrefs } from './components/ui';
 import AssistantWidget from './components/Assistant/AssistantWidget';
@@ -38,10 +39,10 @@ const BankPage = lazy(() => import('./components/Bank/BankPage'));
 const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
 
 type Banner = { kind: 'ok' | 'error'; text: string } | null;
-type PublicView = 'landing' | 'signin' | 'signup';
+type PublicView = 'landing' | 'signin' | 'signup' | 'privacy' | 'terms';
 
-const viewFromPath = (): PublicView =>
-  window.location.pathname === '/signin' ? 'signin' : window.location.pathname === '/signup' ? 'signup' : 'landing';
+const PATH_VIEWS: Record<string, PublicView> = { '/signin': 'signin', '/signup': 'signup', '/privacy': 'privacy', '/terms': 'terms' };
+const viewFromPath = (): PublicView => PATH_VIEWS[window.location.pathname] ?? 'landing';
 
 const sections = [
   {
@@ -220,6 +221,21 @@ function App() {
       setQuickBusy(false);
     }
   };
+
+  // Legal pages are reachable whether or not you're signed in.
+  if (view === 'privacy' || view === 'terms') {
+    return (
+      <LegalPage
+        doc={view}
+        onSwitch={(d) => navigate(d)}
+        onBack={() => {
+          window.history.replaceState({}, '', '/');
+          setView('landing');
+          window.scrollTo({ top: 0 });
+        }}
+      />
+    );
+  }
 
   if (booting) {
     return (

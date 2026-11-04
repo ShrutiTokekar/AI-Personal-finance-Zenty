@@ -407,7 +407,11 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
 
           {/* Privacy */}
           <Section id="privacy" icon={Download} title="Privacy & data" description="Your data is yours. Take it with you any time.">
-            <button onClick={exportData} className="btn-ghost"><Download className="h-4 w-4" /> Download my data</button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={exportData} className="btn-ghost"><Download className="h-4 w-4" /> Download my data</button>
+              <a href="/privacy" className="text-sm font-medium text-primary-700 hover:text-primary-900">Privacy Policy</a>
+              <a href="/terms" className="text-sm font-medium text-primary-700 hover:text-primary-900">Terms of Service</a>
+            </div>
           </Section>
 
           <Section id="delete" icon={Trash2} title="Delete account" danger>

@@ -598,7 +598,11 @@ export default function LandingPage({ onSignIn, onSignUp }: Props) {
             <LogoMark className="h-7 w-7" />
             <span className="font-display text-lg font-semibold text-ink">Zenty</span>
           </div>
-          <p>© {new Date().getFullYear()} Zenty. Zenty is not a bank and does not give financial advice.</p>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <a href="/privacy" className="hover:text-ink">Privacy Policy</a>
+            <a href="/terms" className="hover:text-ink">Terms of Service</a>
+            <span>© {new Date().getFullYear()} Zenty. Not a bank; not financial advice.</span>
+          </div>
         </div>
       </footer>
       <LandingAssistant onSignUp={onSignUp} onSignIn={onSignIn} />

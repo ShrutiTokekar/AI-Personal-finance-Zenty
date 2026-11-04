@@ -311,7 +311,10 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
 
       {step === 'signup' && (
         <p className="mt-4 text-center text-xs text-gray-500">
-          We'll send a welcome email with a link to confirm your address.
+          By creating an account you agree to Zenty's{' '}
+          <a href="/terms" target="_blank" rel="noreferrer" className="font-medium text-primary-700 underline underline-offset-2">Terms of Service</a> and{' '}
+          <a href="/privacy" target="_blank" rel="noreferrer" className="font-medium text-primary-700 underline underline-offset-2">Privacy Policy</a>,
+          and to receive account emails and texted security codes. We'll send a welcome email to confirm your address.
         </p>
       )}
     </div>
