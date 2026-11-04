@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
-from .. import emails
+from .. import emails, sms
 from ..config import get_settings
 from ..db import get_db
 from ..models import User, utcnow
@@ -38,6 +38,21 @@ class SignupIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+    confirm_password: str = Field(min_length=1, max_length=128)
+    phone: str = Field(min_length=7, max_length=24)
+
+
+class CodeIn(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
+
+
+class MfaIn(BaseModel):
+    ticket: str = Field(min_length=20, max_length=200)
+    code: str = Field(min_length=6, max_length=6)
+
+
+class TicketIn(BaseModel):
+    ticket: str = Field(min_length=20, max_length=200)
 
 
 class LoginIn(BaseModel):
@@ -76,22 +91,27 @@ def _issue_verify(user: User) -> str:
 def signup(body: SignupIn, request: Request, response: Response, bg: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit(db, f"signup:{client_ip(request)}", limit=5, window_seconds=3600)
     email = _norm(body.email)
+    if body.password != body.confirm_password:
+        raise HTTPException(400, "Passwords don't match.")
     problem = password_problems(body.password, email)
     if problem:
         raise HTTPException(400, problem)
+    phone = sms.normalize_phone(body.phone)
     if db.query(User).filter(User.email == email).first():
         # Don't reveal too much, but the user needs to know to sign in instead.
         raise HTTPException(409, "An account with this email already exists. Try signing in.")
 
-    user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password))
+    user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password),
+                phone=phone, mfa_enabled=settings.sms_enabled)
     db.add(user)
     db.flush()
     verify_url = _issue_verify(user)
+    code_sent = sms.issue_code(user, "verification") if settings.sms_enabled else False
     db.commit()
 
     bg.add_task(emails.send_welcome, user.email, user.name, verify_url)
     start_session(db, user, request, response)
-    return {"user": user.public()}
+    return {"user": user.public(), "phone_verification_required": code_sent}
 
 
 @router.post("/login")
@@ -116,9 +136,76 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
 
     user.failed_logins = 0
     user.locked_until = None
+    if user.mfa_enabled and user.phone and settings.sms_enabled:
+        # Password was right; now prove possession of the phone before any session exists.
+        rate_limit(db, f"sms:{user.id}", limit=5, window_seconds=900)
+        ticket = new_token()
+        user.mfa_ticket_hash = token_hash(ticket)
+        sent = sms.issue_code(user, "sign-in")
+        db.commit()
+        if not sent:
+            raise HTTPException(502, "We couldn't text your sign-in code. Please try again in a minute.")
+        return {"mfa_required": True, "mfa_ticket": ticket, "phone_masked": user.public()["phone_masked"]}
     db.commit()
     start_session(db, user, request, response)
     return {"user": user.public()}
+
+
+def _user_for_ticket(db: Session, ticket: str) -> User:
+    user = db.query(User).filter(User.mfa_ticket_hash == token_hash(ticket)).first()
+    if not user:
+        raise HTTPException(400, "This sign-in attempt has expired. Please sign in again.")
+    return user
+
+
+@router.post("/mfa/verify")
+def mfa_verify(body: MfaIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    rate_limit(db, f"mfa-ip:{client_ip(request)}", limit=20, window_seconds=900)
+    user = _user_for_ticket(db, body.ticket)
+    try:
+        sms.check_code(user, body.code)
+    finally:
+        db.commit()  # persist the attempt counter even when the code is wrong
+    user.mfa_ticket_hash = None
+    user.phone_verified = True
+    db.commit()
+    start_session(db, user, request, response)
+    return {"user": user.public()}
+
+
+@router.post("/mfa/resend")
+def mfa_resend(body: TicketIn, db: Session = Depends(get_db)):
+    user = _user_for_ticket(db, body.ticket)
+    rate_limit(db, f"sms:{user.id}", limit=5, window_seconds=900)
+    sent = sms.issue_code(user, "sign-in")
+    db.commit()
+    if not sent:
+        raise HTTPException(502, "We couldn't text your code. Please try again in a minute.")
+    return {"ok": True}
+
+
+@router.post("/phone/verify")
+def phone_verify(body: CodeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"phone-verify:{user.id}", limit=10, window_seconds=900)
+    try:
+        sms.check_code(user, body.code)
+    finally:
+        db.commit()
+    user.phone_verified = True
+    db.commit()
+    return {"user": user.public()}
+
+
+@router.post("/phone/resend")
+def phone_resend(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not user.phone:
+        raise HTTPException(400, "Add a phone number first.")
+    rate_limit(db, f"sms:{user.id}", limit=5, window_seconds=900)
+    if not sms.issue_code(user, "verification"):
+        db.commit()
+        raise HTTPException(502, "We couldn't text your code. Please try again in a minute.")
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/google")
@@ -168,6 +255,8 @@ def public_config():
     return {
         "google_client_id": settings.google_client_id or None,
         "bank_linking": bool(settings.plaid_client_id and settings.plaid_secret),
+        "sms_enabled": settings.sms_enabled,
+        "email_enabled": bool(settings.resend_api_key),
     }
 
 

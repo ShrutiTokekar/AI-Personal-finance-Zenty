@@ -57,11 +57,11 @@ def create_transaction(body: TransactionIn, user: User = Depends(current_user), 
 
 
 @router.get("/transactions")
-def list_transactions(limit: int = 100, category: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_transactions(limit: int = 300, category: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     q = db.query(Transaction).filter(Transaction.user_id == user.id)
     if category:
         q = q.filter(Transaction.category == category)
-    rows = q.order_by(Transaction.date.desc()).limit(max(1, min(limit, 500))).all()
+    rows = q.order_by(Transaction.date.desc()).limit(max(1, min(limit, 1000))).all()
     return {"transactions": [t.to_dict() for t in rows]}
 
 
@@ -102,6 +102,50 @@ def get_advice(user: User = Depends(current_user), db: Session = Depends(get_db)
 @router.get("/anomalies")
 def anomalies(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {"anomalies": insights.unusual_transactions(db, user.id)}
+
+
+def _recurring_for_dashboard(db: Session, uid: int) -> dict:
+    """Tracked subscriptions if the user manages any, otherwise detected ones."""
+    from .subscriptions import summary
+    sub = summary(db, uid)
+    active = [s for s in sub["items"] if s["status"] == "active"]
+    if active:
+        items = [{"name": s["name"], "category": s["category"], "amount": s["amount"],
+                  "last_date": s["next_date"], "next_date": s["next_date"]} for s in active]
+        return {"items": items[:8], "monthly_total": sub["totals"]["monthly"]}
+    items = sub["suggestions"]
+    return {"items": items[:8], "monthly_total": round(sum(i["amount"] for i in items), 2)}
+
+
+@router.get("/overview")
+def overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Everything the dashboard needs in one request."""
+    from ..models import BankAccount
+    uid = user.id
+    budgets = insights.budgets_with_spend(db, uid)
+    budgets.sort(key=lambda b: -(b["current_spent"] / b["monthly_limit"] if b["monthly_limit"] else 0))
+    goals = db.query(SavingsGoal).filter(SavingsGoal.user_id == uid, SavingsGoal.completed.is_(False)) \
+        .order_by(SavingsGoal.created_at.desc()).limit(3).all()
+    recent = db.query(Transaction).filter(Transaction.user_id == uid).order_by(Transaction.date.desc()).limit(6).all()
+    accounts = db.query(BankAccount).filter(BankAccount.user_id == uid).all()
+    holdings = db.query(StockHolding).filter(StockHolding.user_id == uid).all()
+    cash = sum(a.current_balance or 0 for a in accounts if a.type in ("depository", "investment"))
+    debt = sum(a.current_balance or 0 for a in accounts if a.type in ("credit", "loan"))
+    invested = sum(h.shares * h.purchase_price for h in holdings)
+    return {
+        "summary": insights.monthly_summary(db, uid),
+        "zen": insights.zen_score(db, uid),
+        "safe_to_spend": insights.safe_to_spend(db, uid),
+        "daily": insights.daily_spending(db, uid),
+        "trends": insights.spending_trends(db, uid),
+        "categories": insights.category_breakdown(db, uid),
+        "budgets": budgets[:4],
+        "goals": [g.to_dict() for g in goals],
+        "recent": [t.to_dict() for t in recent],
+        "recurring": _recurring_for_dashboard(db, uid),
+        "net_worth": {"cash": cash, "debt": debt, "invested": invested, "total": cash + invested - debt,
+                      "linked_accounts": len(accounts)},
+    }
 
 
 class ChatIn(BaseModel):

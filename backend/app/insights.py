@@ -174,3 +174,138 @@ def advice(db: Session, user_id: int) -> str:
     elif s["expense_change"] < -10:
         tips.append(f"Spending is down {-s['expense_change']:.0f}% vs last month. Keep it up!")
     return " ".join(tips) or "Your finances look steady this month. Keep tracking!"
+
+
+# ---------------------------------------------------------------------------
+# Dashboard overview: Zen Score, safe-to-spend, recurring charges, calendar
+# ---------------------------------------------------------------------------
+import calendar as _calendar
+import re as _re
+
+
+def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, x))
+
+
+def zen_score(db: Session, user_id: int) -> dict:
+    """0-100 financial health score from four equally weighted factors."""
+    from .models import SavingsGoal
+
+    from .models import User
+    s = monthly_summary(db, user_id)
+    factors = []
+    user = db.get(User, user_id)
+    target = (user.savings_target_pct if user and user.savings_target_pct else 20)
+
+    if s["total_income"] > 0:
+        pts = 25 * _clamp(s["savings_rate"] / target)
+        tip = f"Saving {target}%+ of income earns full points." if pts < 25 else f"You're saving {target}%+ of income."
+    else:
+        pts, tip = 8, "Log your income to score this."
+    factors.append({"key": "savings", "label": "Savings rate", "points": round(pts), "max": 25, "tip": tip})
+
+    budgets = budgets_with_spend(db, user_id)
+    if budgets:
+        on_track = sum(1 for b in budgets if b["remaining"] >= 0)
+        pts = 25 * on_track / len(budgets)
+        tip = f"{on_track} of {len(budgets)} budgets on track."
+    else:
+        pts, tip = 10, "Set a budget to score this."
+    factors.append({"key": "budgets", "label": "Budgets on track", "points": round(pts), "max": 25, "tip": tip})
+
+    last = _sum(db, user_id, "expense", prev_month_start(month_start()), month_start())
+    if last > 0:
+        # Compare against the same fraction of last month so early-month scores aren't inflated.
+        now = utcnow()
+        days = _calendar.monthrange(now.year, now.month)[1]
+        expected = last * now.day / days
+        change = (s["total_expenses"] - expected) / expected * 100 if expected else 0
+        pts = 25 * _clamp(1 - change / 30)
+        tip = "Spending is pacing below last month." if change <= 0 else f"Spending is pacing {change:.0f}% above last month."
+    else:
+        pts, tip = 15, "Score improves after a full month of data."
+    factors.append({"key": "trend", "label": "Spending pace", "points": round(pts), "max": 25, "tip": tip})
+
+    goals = db.query(SavingsGoal).filter(SavingsGoal.user_id == user_id).all()
+    if goals:
+        avg = sum(_clamp(g.current_amount / g.target_amount) if g.target_amount else 0 for g in goals) / len(goals)
+        pts = 25 * avg
+        tip = f"Goals are {avg * 100:.0f}% funded on average."
+    else:
+        pts, tip = 8, "Create a savings goal to score this."
+    factors.append({"key": "goals", "label": "Goal progress", "points": round(pts), "max": 25, "tip": tip})
+
+    score = sum(f["points"] for f in factors)
+    label = "Thriving" if score >= 80 else "Steady" if score >= 60 else "Building" if score >= 40 else "Needs care"
+    return {"score": score, "label": label, "factors": factors}
+
+
+def safe_to_spend(db: Session, user_id: int) -> dict:
+    now = utcnow()
+    days_in_month = _calendar.monthrange(now.year, now.month)[1]
+    days_left = days_in_month - now.day + 1
+    budgets = budgets_with_spend(db, user_id)
+    if budgets:
+        remaining = sum(max(0.0, b["remaining"]) for b in budgets)
+        basis = "Based on what's left in your budgets"
+    else:
+        s = monthly_summary(db, user_id)
+        remaining = max(0.0, s["net_savings"])
+        basis = "Based on this month's income minus spending" if s["total_income"] else "Add income or budgets to calculate"
+    return {"daily": round(remaining / days_left, 2), "remaining": round(remaining, 2),
+            "days_left": days_left, "basis": basis}
+
+
+def daily_spending(db: Session, user_id: int) -> list[dict]:
+    start = month_start()
+    now = utcnow()
+    days = _calendar.monthrange(now.year, now.month)[1]
+    totals = [0.0] * days
+    rows = db.query(Transaction.date, Transaction.amount).filter(
+        Transaction.user_id == user_id, Transaction.type == "expense", Transaction.date >= start
+    )
+    for d, amt in rows:
+        if d.month == now.month:
+            totals[d.day - 1] += amt
+    return [{"day": i + 1, "amount": round(v, 2), "future": i + 1 > now.day} for i, v in enumerate(totals)]
+
+
+def _merchant_key(text: str | None) -> str:
+    t = (text or "").lower()
+    t = _re.sub(r"[^a-z ]+", " ", t)
+    t = _re.sub(r"\b(inc|llc|ltd|co|com|www|payment|purchase|pos|debit|card)\b", " ", t)
+    return " ".join(t.split())[:40]
+
+
+def recurring_charges(db: Session, user_id: int) -> dict:
+    """Expenses from the same merchant, of a similar amount, in 2+ different months."""
+    since = utcnow() - timedelta(days=125)
+    txns = db.query(Transaction).filter(
+        Transaction.user_id == user_id, Transaction.type == "expense", Transaction.date >= since
+    ).all()
+    groups: dict[str, list[Transaction]] = defaultdict(list)
+    for t in txns:
+        key = _merchant_key(t.description) or t.category.lower()
+        groups[key].append(t)
+    found = []
+    for key, items in groups.items():
+        months = {t.date.strftime("%Y-%m") for t in items}
+        if len(months) < 2 or len(items) > len(months) * 2:
+            continue  # need monthly cadence, not daily coffee
+        amounts = [t.amount for t in items]
+        avg = mean(amounts)
+        if avg <= 0 or max(abs(a - avg) for a in amounts) > avg * 0.15:
+            continue
+        last = max(items, key=lambda t: t.date)
+        if (utcnow() - last.date).days > 40:
+            continue  # stopped repeating; don't predict a renewal that's already past
+        found.append({
+            "merchant_key": key,
+            "name": (last.description or last.category)[:60],
+            "category": last.category,
+            "amount": round(avg, 2),
+            "last_date": last.date.isoformat(),
+            "next_date": (last.date + timedelta(days=30)).isoformat(),
+        })
+    found.sort(key=lambda r: -r["amount"])
+    return {"items": found[:8], "monthly_total": round(sum(r["amount"] for r in found), 2)}

@@ -46,11 +46,9 @@ export default function AddStockModal({ onClose, onSuccess }: AddStockModalProps
       setSymbolError('');
       setSymbolValid(false);
       
-      console.log('Validating symbol:', symbol);
 
       // Validate symbol
       const validationResponse = await stocksAPI.validate(symbol.toUpperCase());
-      console.log('Validation response:', validationResponse);
       
       if (!validationResponse.data.valid) {
         setSymbolError('Invalid stock symbol. Please check and try again.');
@@ -61,7 +59,6 @@ export default function AddStockModal({ onClose, onSuccess }: AddStockModalProps
       // Fetch stock info to populate name and current price
       try {
         const priceInfo = await stocksAPI.getPrice(symbol.toUpperCase());
-        console.log('Price info response:', priceInfo);
 
         if (priceInfo.data.name) {
           setFormData(prev => ({ 

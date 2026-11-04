@@ -1,235 +1,157 @@
-// frontend/src/components/Savings/SavingsPage.tsx
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Plus, Calendar, Trash2, DollarSign } from 'lucide-react';
-import { savingsAPI, type SavingsGoal } from '../../services/api';
+import { useEffect, useState } from 'react';
+import { CalendarClock, PiggyBank, Plus, Trash2, Trophy } from 'lucide-react';
 import CreateGoalModal from './CreateGoalModal';
 import ContributeModal from './ContributeModal';
+import { errorMessage, savingsAPI, type SavingsGoal } from '../../services/api';
+import { EmptyState, Money, PageHeader, Spinner } from '../ui';
+
+function GoalRing({ pct, done }: { pct: number; done: boolean }) {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const p = Math.max(0, Math.min(100, pct)) / 100;
+  return (
+    <div className="relative h-20 w-20 shrink-0">
+      <svg viewBox="0 0 80 80" className="h-20 w-20 -rotate-90" aria-hidden="true">
+        <circle cx="40" cy="40" r={r} fill="none" stroke="#ece5d3" strokeWidth="7" />
+        <circle cx="40" cy="40" r={r} fill="none" stroke={done ? '#93c234' : '#6c914c'} strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - p)} style={{ transition: 'stroke-dashoffset .8s ease' }} />
+      </svg>
+      <span className="num absolute inset-0 flex items-center justify-center text-sm font-bold text-ink">
+        {done ? <Trophy className="h-6 w-6 text-matcha-600" /> : `${Math.round(pct)}%`}
+      </span>
+    </div>
+  );
+}
+
+function monthsUntil(deadline: string) {
+  const d = new Date(deadline);
+  const now = new Date();
+  return (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth());
+}
 
 export default function SavingsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showContributeModal, setShowContributeModal] = useState(false);
-  const [selectedGoal, setSelectedGoal] = useState<SavingsGoal | null>(null);
+  const [showDone, setShowDone] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [contributing, setContributing] = useState<SavingsGoal | null>(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadGoals();
-  }, []);
-
-  const loadGoals = async () => {
+  const load = async (includeDone = showDone) => {
     try {
-      setLoading(true);
-      const response = await savingsAPI.getGoals(false);
-      setGoals(response.data.goals);
-    } catch (error) {
-      console.error('Failed to load goals:', error);
+      const r = await savingsAPI.getGoals(includeDone);
+      setGoals(r.data.goals);
+    } catch (e) {
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this savings goal?')) return;
-    
+  useEffect(() => {
+    load(showDone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDone]);
+
+  const remove = async (g: SavingsGoal) => {
+    if (!window.confirm(`Delete the goal "${g.name}"?`)) return;
     try {
-      await savingsAPI.deleteGoal(id);
-      setGoals(prev => prev.filter(g => g.id !== id));
-    } catch (error) {
-      console.error('Failed to delete goal:', error);
+      await savingsAPI.deleteGoal(g.id);
+      await load();
+    } catch (e) {
+      setError(errorMessage(e));
     }
   };
 
-  const handleContribute = (goal: SavingsGoal) => {
-    setSelectedGoal(goal);
-    setShowContributeModal(true);
-  };
-
-  const getProgressColor = (progress: number) => {
-    if (progress >= 100) return 'bg-green-500';
-    if (progress >= 75) return 'bg-blue-500';
-    if (progress >= 50) return 'bg-yellow-500';
-    return 'bg-orange-500';
-  };
-
-  const totalSaved = goals.reduce((sum, goal) => sum + goal.current_amount, 0);
-  const totalTarget = goals.reduce((sum, goal) => sum + goal.target_amount, 0);
-  const overallProgress = totalTarget > 0 ? (totalSaved / totalTarget) * 100 : 0;
+  const saved = goals.reduce((s, g) => s + g.current_amount, 0);
+  const target = goals.reduce((s, g) => s + g.target_amount, 0);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Savings Goals</h1>
-          <p className="mt-2 text-gray-600">Track your progress toward financial goals</p>
-        </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="h-5 w-5" />
-          <span>New Goal</span>
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Goals"
+        subtitle="Save on purpose, one goal at a time."
+        actions={
+          <>
+            <label className="btn-ghost cursor-pointer">
+              <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} className="accent-primary-600" />
+              Show completed
+            </label>
+            <button onClick={() => setShowCreate(true)} className="btn-primary"><Plus className="h-4 w-4" /> New goal</button>
+          </>
+        }
+      />
 
-      {/* Overall Progress */}
-      <div className="bg-gradient-to-br from-primary-50 to-blue-50 rounded-xl p-6 border border-primary-100">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Total Progress</h3>
-            <p className="text-sm text-gray-600">Across all goals</p>
-          </div>
-          <Target className="h-8 w-8 text-primary-600" />
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Saved: ${totalSaved.toFixed(2)}</span>
-            <span className="text-gray-600">Target: ${totalTarget.toFixed(2)}</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(overallProgress, 100)}%` }}
-              transition={{ duration: 1, ease: "easeOut" }}
-              className="bg-primary-600 h-3 rounded-full"
-            />
-          </div>
-          <p className="text-right text-sm font-semibold text-primary-600">
-            {overallProgress.toFixed(1)}%
-          </p>
-        </div>
-      </div>
+      {error && <p className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      {/* Goals List */}
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-        </div>
+        <Spinner />
       ) : goals.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
-          <Target className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Savings Goals Yet</h3>
-          <p className="text-gray-600 mb-4">Start saving for something you care about!</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center space-x-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            <Plus className="h-5 w-5" />
-            <span>Create Your First Goal</span>
-          </button>
+        <div className="card">
+          <EmptyState icon={PiggyBank} title="No goals yet"
+            text="An emergency fund, a trip, a new laptop. Give your savings a purpose and watch it grow."
+            action={<button onClick={() => setShowCreate(true)} className="btn-primary"><Plus className="h-4 w-4" /> Create a goal</button>} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <AnimatePresence>
-            {goals.map((goal, index) => (
-              <motion.div
-                key={goal.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ delay: index * 0.1 }}
-                className={`bg-white rounded-xl shadow-sm border p-6 ${
-                  goal.completed ? 'border-green-300' : 'border-gray-100'
-                }`}
-              >
-                {/* Goal Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                      {goal.name}
-                      {goal.completed && (
-                        <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                          ✓ Completed
-                        </span>
-                      )}
-                    </h3>
-                    {goal.deadline && (
-                      <p className="text-sm text-gray-500 flex items-center mt-1">
-                        <Calendar className="h-4 w-4 mr-1" />
-                        Due: {new Date(goal.deadline).toLocaleDateString()}
+        <>
+          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+            <div className="card p-5">
+              <p className="text-sm text-gray-500">Saved so far</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-ink"><Money value={saved} cents={false} /></p>
+            </div>
+            <div className="card p-5">
+              <p className="text-sm text-gray-500">Total target</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-ink"><Money value={target} cents={false} /></p>
+            </div>
+            <div className="card p-5">
+              <p className="text-sm text-gray-500">Overall progress</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-primary-700">{target ? Math.round((saved / target) * 100) : 0}%</p>
+            </div>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {goals.map((g) => {
+              const months = g.deadline ? monthsUntil(g.deadline) : null;
+              const perMonth = months && months > 0 && g.remaining > 0 ? g.remaining / months : null;
+              return (
+                <div key={g.id} className="card group flex flex-col p-6">
+                  <div className="flex items-start gap-4">
+                    <GoalRing pct={g.progress} done={g.completed} />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-lg font-semibold text-ink">{g.name}</h3>
+                      {g.description && <p className="line-clamp-2 text-sm text-gray-500">{g.description}</p>}
+                      <p className="mt-2 text-sm text-gray-600">
+                        <Money value={g.current_amount} cents={false} className="font-semibold text-ink" /> of <Money value={g.target_amount} cents={false} />
                       </p>
-                    )}
+                    </div>
+                    <button onClick={() => remove(g)} aria-label={`Delete ${g.name}`}
+                      className="rounded-lg p-2 text-gray-300 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleDelete(goal.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                  >
-                    <Trash2 className="h-5 w-5" />
-                  </button>
+                  {g.deadline && (
+                    <p className="mt-4 flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                      <CalendarClock className="h-4 w-4 text-gray-400" />
+                      {g.completed ? 'Completed' : months !== null && months <= 0 ? 'Deadline reached' : (
+                        <>By {new Date(g.deadline).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                          {perMonth && <> · save <Money value={perMonth} cents={false} className="font-semibold text-ink" />/mo</>}</>
+                      )}
+                    </p>
+                  )}
+                  {!g.completed && (
+                    <button onClick={() => setContributing(g)} className="btn-ghost mt-5 w-full">
+                      <Plus className="h-4 w-4" /> Add money
+                    </button>
+                  )}
                 </div>
-
-                {/* Progress */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold text-gray-700">
-                      ${goal.current_amount.toFixed(2)}
-                    </span>
-                    <span className="text-gray-500">
-                      ${goal.target_amount.toFixed(2)}
-                    </span>
-                  </div>
-                  
-                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(goal.progress, 100)}%` }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className={`h-3 rounded-full ${getProgressColor(goal.progress)}`}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-700">
-                      {goal.progress.toFixed(1)}% Complete
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      ${goal.remaining.toFixed(2)} remaining
-                    </span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                {!goal.completed && (
-                  <button
-                    onClick={() => handleContribute(goal)}
-                    className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                  >
-                    <DollarSign className="h-5 w-5" />
-                    <span>Add Money</span>
-                  </button>
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {/* Modals */}
-      {showCreateModal && (
-        <CreateGoalModal
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
-            setShowCreateModal(false);
-            loadGoals();
-          }}
-        />
-      )}
-
-      {showContributeModal && selectedGoal && (
-        <ContributeModal
-          goal={selectedGoal}
-          onClose={() => {
-            setShowContributeModal(false);
-            setSelectedGoal(null);
-          }}
-          onSuccess={() => {
-            setShowContributeModal(false);
-            setSelectedGoal(null);
-            loadGoals();
-          }}
-        />
-      )}
+      {showCreate && <CreateGoalModal onClose={() => setShowCreate(false)} onSuccess={() => { setShowCreate(false); load(); }} />}
+      {contributing && <ContributeModal goal={contributing} onClose={() => setContributing(null)} onSuccess={() => { setContributing(null); load(); }} />}
     </div>
   );
 }

@@ -55,7 +55,7 @@ export default function GoogleButton({ clientId, onCredential, text = 'continue_
   }, [clientId, text]);
 
   if (failed) {
-    return <p className="text-sm text-stone-500 text-center">Google sign-in is unavailable right now.</p>;
+    return <p className="text-sm text-gray-500 text-center">Google sign-in is unavailable right now.</p>;
   }
   return <div ref={ref} className="w-full flex justify-center min-h-[44px]" />;
 }

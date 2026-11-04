@@ -55,19 +55,36 @@ export interface User {
   stock_alerts: boolean;
   stock_alert_threshold: number;
   created_at: string;
+  phone_masked?: string | null;
+  phone_verified?: boolean;
+  mfa_enabled?: boolean;
+  currency?: string;
+  start_page?: string;
+  budget_alert_pct?: number;
+  savings_target_pct?: number;
 }
+
+export interface DeviceSession { id: number; created_at: string; expires_at: string; device: string; current: boolean }
+
+export type LoginResult = { user: User } | { mfa_required: true; mfa_ticket: string; phone_masked: string | null };
 
 export interface PublicConfig {
   google_client_id: string | null;
   bank_linking: boolean;
+  email_enabled?: boolean;
+  sms_enabled?: boolean;
 }
 
 export const authAPI = {
   config: () => api.get<PublicConfig>('/auth/config'),
   me: () => api.get<{ user: User }>('/auth/me'),
-  signup: (name: string, email: string, password: string) =>
-    api.post<{ user: User }>('/auth/signup', { name, email, password }),
-  login: (email: string, password: string) => api.post<{ user: User }>('/auth/login', { email, password }),
+  signup: (name: string, email: string, password: string, confirm_password: string, phone: string) =>
+    api.post<{ user: User; phone_verification_required: boolean }>('/auth/signup', { name, email, password, confirm_password, phone }),
+  login: (email: string, password: string) => api.post<LoginResult>('/auth/login', { email, password }),
+  mfaVerify: (ticket: string, code: string) => api.post<{ user: User }>('/auth/mfa/verify', { ticket, code }),
+  mfaResend: (ticket: string) => api.post('/auth/mfa/resend', { ticket }),
+  phoneVerify: (code: string) => api.post<{ user: User }>('/auth/phone/verify', { code }),
+  phoneResend: () => api.post('/auth/phone/resend'),
   google: (credential: string) => api.post<{ user: User; new_user: boolean }>('/auth/google', { credential }),
   logout: () => api.post('/auth/logout'),
   logoutEverywhere: () => api.post('/auth/logout-everywhere'),
@@ -78,8 +95,14 @@ export const authAPI = {
 };
 
 export const accountAPI = {
-  updateProfile: (data: Partial<Pick<User, 'name' | 'stock_alerts' | 'stock_alert_threshold'>>) =>
+  updateProfile: (data: Partial<Pick<User, 'name' | 'stock_alerts' | 'stock_alert_threshold' | 'currency' | 'start_page' | 'budget_alert_pct' | 'savings_target_pct'>>) =>
     api.patch<{ user: User }>('/account/profile', data),
+  setMfa: (enabled: boolean, password: string | null) => api.post<{ user: User }>('/account/mfa', { enabled, password }),
+  changePhone: (phone: string, password: string | null) =>
+    api.post<{ verification_sent: boolean; user: User }>('/account/phone', { phone, password }),
+  confirmPhone: (code: string) => api.post<{ user: User }>('/account/phone/confirm', { code }),
+  sessions: () => api.get<{ sessions: DeviceSession[] }>('/account/sessions'),
+  revokeSession: (id: number) => api.delete(`/account/sessions/${id}`),
   changePassword: (current_password: string | null, new_password: string) =>
     api.post('/account/password', { current_password, new_password }),
   exportData: () => api.get('/account/export'),
@@ -94,6 +117,7 @@ export interface BankAccount {
   mask: string | null;
   type: string;
   subtype: string | null;
+  kind?: AccountKind;
   current_balance: number | null;
   available_balance: number | null;
   currency: string;
@@ -123,7 +147,10 @@ export interface Transaction {
   date?: string;
   type: 'income' | 'expense';
   source?: 'manual' | 'bank';
+  account?: { id: number; name: string; mask: string | null; kind: AccountKind } | null;
 }
+
+export type AccountKind = 'checking' | 'savings' | 'credit' | 'loan' | 'investment' | 'other';
 
 export interface Summary {
   total_income: number;
@@ -279,8 +306,66 @@ export const analyticsAPI = {
   getCategoryBreakdown: () => api.get<{ breakdown: CategoryBreakdown[] }>('/analytics/category-breakdown'),
 };
 
+export interface ZenFactor { key: string; label: string; points: number; max: number; tip: string }
+export interface Overview {
+  summary: Summary;
+  zen: { score: number; label: string; factors: ZenFactor[] };
+  safe_to_spend: { daily: number; remaining: number; days_left: number; basis: string };
+  daily: { day: number; amount: number; future: boolean }[];
+  trends: Trend[];
+  categories: CategoryBreakdown[];
+  budgets: Budget[];
+  goals: SavingsGoal[];
+  recent: Transaction[];
+  recurring: { items: { name: string; category: string; amount: number; last_date: string; next_date: string }[]; monthly_total: number };
+  net_worth: { cash: number; debt: number; invested: number; total: number; linked_accounts: number };
+}
+
+export type Cycle = 'weekly' | 'monthly' | 'yearly';
+export interface Subscription {
+  id: number; name: string; amount: number; cycle: Cycle; next_date: string | null; category: string;
+  status: 'active' | 'cancelled' | 'ignored'; source: 'manual' | 'detected'; merchant_key: string | null;
+  monthly_cost: number; cancelled_at: string | null;
+}
+export interface DetectedCharge { merchant_key: string; name: string; category: string; amount: number; last_date: string; next_date: string }
+export interface SubscriptionSummary {
+  items: Subscription[];
+  suggestions: DetectedCharge[];
+  totals: { monthly: number; yearly: number; active: number };
+  upcoming: Subscription[];
+}
+
+export const subscriptionsAPI = {
+  list: () => api.get<SubscriptionSummary>('/subscriptions'),
+  add: (data: { name: string; amount: number; cycle: Cycle; next_date?: string | null; category?: string; merchant_key?: string; source?: 'manual' | 'detected' }) =>
+    api.post<{ subscription: Subscription }>('/subscriptions', data),
+  update: (id: number, data: Partial<Pick<Subscription, 'name' | 'amount' | 'cycle' | 'next_date' | 'status'>>) =>
+    api.patch<{ subscription: Subscription }>(`/subscriptions/${id}`, data),
+  remove: (id: number) => api.delete(`/subscriptions/${id}`),
+  ignore: (merchant_key: string, name: string) => api.post('/subscriptions/ignore', { merchant_key, name }),
+};
+
+export const overviewAPI = {
+  get: () => api.get<Overview>('/overview'),
+};
+
+export type AssistantAction =
+  | { label: string; kind: 'delete_transaction'; id: number }
+  | { label: string; kind: 'apply_budgets'; budgets: { category: string; monthly_limit: number }[] }
+  | { label: string; kind: 'dismiss' };
+
+export interface AssistantReply {
+  type: 'text' | 'confirm' | 'plan';
+  message: string;
+  actions?: AssistantAction[];
+}
+
 export const chatAPI = {
-  sendMessage: (message: string) => api.post('/chat', { message }),
+  sendMessage: (message: string) => api.post<AssistantReply>('/chat', { message }),
+};
+
+export const anomaliesAPI = {
+  get: () => api.get<{ anomalies: Transaction[] }>('/anomalies'),
 };
 
 export const predictionAPI = {

@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import get_settings
 from .db import init_db
-from .routers import account, auth, bank, finance, internal
+from .routers import account, auth, bank, finance, internal, subscriptions
 from .security import SESSION_COOKIE, csrf_ok
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -98,4 +98,5 @@ app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(finance.router)
 app.include_router(bank.router)
+app.include_router(subscriptions.router)
 app.include_router(internal.router)
