@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, Eye, EyeOff, Loader2, Lock, Mail, MessageSquareText, Phone, ShieldCheck, User as UserIcon, X } from 'lucide-react';
-import { authAPI, errorMessage, type PublicConfig, type User } from '../../services/api';
+import { authAPI, errorMessage, type MfaMethod, type PublicConfig, type User } from '../../services/api';
 import GoogleButton from './GoogleButton';
 
 export type AuthMode = 'login' | 'signup' | 'forgot' | 'reset';
@@ -37,6 +37,8 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
   const [showPw, setShowPw] = useState(false);
   const [code, setCode] = useState('');
   const [ticket, setTicket] = useState('');
+  const [methods, setMethods] = useState<MfaMethod[]>([]);
+  const [method, setMethod] = useState<MfaMethod>('totp');
   const [maskedPhone, setMaskedPhone] = useState<string | null>(null);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -74,8 +76,10 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         if ('mfa_required' in r.data) {
           setTicket(r.data.mfa_ticket);
           setMaskedPhone(r.data.phone_masked);
+          setMethods(r.data.methods || ['sms']);
+          setMethod((r.data.methods || ['sms'])[0]);
           setCode('');
-          setCooldown(RESEND_SECONDS);
+          setCooldown((r.data.methods || ['sms'])[0] === 'sms' ? RESEND_SECONDS : 0);
           setStep('mfa');
         } else {
           onAuthed(r.data.user);
@@ -94,7 +98,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         const r = await authAPI.phoneVerify(code);
         onAuthed(r.data.user);
       } else if (step === 'mfa') {
-        const r = await authAPI.mfaVerify(ticket, code);
+        const r = await authAPI.mfaVerify(ticket, code, method);
         onAuthed(r.data.user);
       } else if (step === 'forgot') {
         const r = await authAPI.forgotPassword(email);
@@ -116,12 +120,29 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
   const resend = async () => {
     setError('');
     try {
-      if (step === 'mfa') await authAPI.mfaResend(ticket);
+      if (step === 'mfa' && method === 'email') await authAPI.mfaEmail(ticket);
+      else if (step === 'mfa') await authAPI.mfaResend(ticket);
       else await authAPI.phoneResend();
       setNotice('A new code is on its way.');
       setCooldown(RESEND_SECONDS);
     } catch (err) {
       setError(errorMessage(err));
+    }
+  };
+
+  const switchMethod = async (m: MfaMethod) => {
+    setError('');
+    setNotice('');
+    setCode('');
+    setMethod(m);
+    if (m === 'email') {
+      try {
+        await authAPI.mfaEmail(ticket);
+        setNotice('We emailed you a 6-digit code.');
+        setCooldown(RESEND_SECONDS);
+      } catch (err) {
+        setError(errorMessage(err));
+      }
     }
   };
 
@@ -144,7 +165,12 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
     forgot: ['Reset your password', "We'll email you a secure link"],
     reset: ['Choose a new password', 'Make it long and unique'],
     verifyPhone: ['Verify your phone', `We texted a 6-digit code to ${maskedPhone ?? 'your phone'}.`],
-    mfa: ['Two-step sign-in', `Enter the 6-digit code we texted to ${maskedPhone ?? 'your phone'}.`],
+    mfa: ['Two-step sign-in', {
+      totp: 'Open your authenticator app and enter the 6-digit code for Zenty.',
+      email: 'Enter the 6-digit code we just emailed you.',
+      backup: 'Enter one of the backup codes you saved when you set up two-step sign-in.',
+      sms: `Enter the 6-digit code we texted to ${maskedPhone ?? 'your phone'}.`,
+    }[method]],
   };
 
   const input =
@@ -200,21 +226,34 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
               <span className="sr-only">6-digit code</span>
               <input
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                inputMode="numeric"
+                onChange={(e) => setCode(method === 'backup' ? e.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 9) : e.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode={method === 'backup' ? 'text' : 'numeric'}
                 autoComplete="one-time-code"
                 autoFocus
-                placeholder="••••••"
-                aria-label="6-digit code"
+                placeholder={method === 'backup' ? 'xxxx-xxxx' : '••••••'}
+                aria-label={method === 'backup' ? 'Backup code' : '6-digit code'}
                 className="num w-full rounded-xl border border-line bg-white py-3.5 text-center font-display text-3xl tracking-[0.6em] text-ink placeholder-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-400"
               />
             </label>
             <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-1.5 text-gray-500"><ShieldCheck className="h-4 w-4 text-primary-600" /> Codes expire in 10 minutes</span>
-              <button type="button" onClick={resend} disabled={cooldown > 0} className="font-medium text-primary-700 hover:text-primary-900 disabled:text-gray-400">
-                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-              </button>
+              <span className="flex items-center gap-1.5 text-gray-500"><ShieldCheck className="h-4 w-4 text-primary-600" />
+                {method === 'totp' ? 'A new code appears every 30 seconds' : method === 'backup' ? 'Each backup code works once' : 'Codes expire in 10 minutes'}
+              </span>
+              {(method === 'email' || method === 'sms' || step === 'verifyPhone') && (
+                <button type="button" onClick={resend} disabled={cooldown > 0} className="font-medium text-primary-700 hover:text-primary-900 disabled:text-gray-400">
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                </button>
+              )}
             </div>
+            {step === 'mfa' && methods.length > 1 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-sm">
+                {methods.filter((m) => m !== method).map((m) => (
+                  <button key={m} type="button" onClick={() => switchMethod(m)} className="font-medium text-primary-700 hover:text-primary-900">
+                    {{ totp: 'Use authenticator app', email: 'Email me a code instead', backup: 'Use a backup code', sms: 'Text me a code' }[m]}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -237,10 +276,10 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
                 <label className="block relative">
                   <span className="sr-only">Mobile number</span>
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input className={input} type="tel" placeholder="Mobile number, e.g. +1 415 555 0123" value={phone}
-                    onChange={(e) => setPhone(e.target.value)} required maxLength={24} autoComplete="tel" inputMode="tel" />
+                  <input className={input} type="tel" placeholder="Mobile number (optional)" value={phone}
+                    onChange={(e) => setPhone(e.target.value)} maxLength={24} autoComplete="tel" inputMode="tel" />
                 </label>
-                <p className="mt-1.5 text-xs text-gray-500">Used only to text you sign-in codes, for two-step security.</p>
+                <p className="mt-1.5 text-xs text-gray-500">Optional. You can turn on two-step sign-in with a free authenticator app in Settings.</p>
               </div>
             )}
             {step !== 'forgot' && (
@@ -297,7 +336,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
         {notice && <p role="status" className="rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800">{notice}</p>}
 
-        <button type="submit" disabled={busy || mismatch || (isCodeStep && code.length !== 6)}
+        <button type="submit" disabled={busy || mismatch || (isCodeStep && (method === 'backup' && step === 'mfa' ? code.replace('-', '').length !== 8 : code.length !== 6))}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ink py-3 font-semibold text-white shadow-lift transition hover:bg-ink-700 disabled:opacity-60">
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
           {submitLabel[step]}
@@ -314,7 +353,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
           By creating an account you agree to Zenty's{' '}
           <a href="/terms" target="_blank" rel="noreferrer" className="font-medium text-primary-700 underline underline-offset-2">Terms of Service</a> and{' '}
           <a href="/privacy" target="_blank" rel="noreferrer" className="font-medium text-primary-700 underline underline-offset-2">Privacy Policy</a>,
-          and to receive account emails and texted security codes. We'll send a welcome email to confirm your address.
+          and to receive account and security emails. We'll send a welcome email to confirm your address.
         </p>
       )}
     </div>

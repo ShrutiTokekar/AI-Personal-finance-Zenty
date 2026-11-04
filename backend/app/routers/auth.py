@@ -6,13 +6,17 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
-from .. import emails, sms
+import json
+from typing import Literal
+
+from .. import emails, sms, totp
 from ..config import get_settings
 from ..db import get_db
 from ..models import User, utcnow
 from ..security import (
     client_ip,
     current_user,
+    decrypt_text,
     device_label,
     end_all_sessions,
     record_event,
@@ -41,7 +45,7 @@ class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
     confirm_password: str = Field(min_length=1, max_length=128)
-    phone: str = Field(min_length=7, max_length=24)
+    phone: str | None = Field(default=None, max_length=24)  # optional
 
 
 class CodeIn(BaseModel):
@@ -50,7 +54,8 @@ class CodeIn(BaseModel):
 
 class MfaIn(BaseModel):
     ticket: str = Field(min_length=20, max_length=200)
-    code: str = Field(min_length=6, max_length=6)
+    code: str = Field(min_length=6, max_length=12)
+    method: Literal["totp", "email", "backup", "sms"] | None = None
 
 
 class TicketIn(BaseModel):
@@ -100,17 +105,17 @@ def signup(body: SignupIn, request: Request, response: Response, bg: BackgroundT
     problem = password_problems(body.password, email)
     if problem:
         raise HTTPException(400, problem)
-    phone = sms.normalize_phone(body.phone)
+    phone = sms.normalize_phone(body.phone) if body.phone and body.phone.strip() else None
     if db.query(User).filter(User.email == email).first():
         # Don't reveal too much, but the user needs to know to sign in instead.
         raise HTTPException(409, "An account with this email already exists. Try signing in.")
 
     user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password),
-                phone=phone, mfa_enabled=settings.sms_enabled)
+                phone=phone, mfa_enabled=bool(settings.sms_enabled and phone))
     db.add(user)
     db.flush()
     verify_url = _issue_verify(user)
-    code_sent = sms.issue_code(user, "verification") if settings.sms_enabled else False
+    code_sent = sms.issue_code(user, "verification") if (settings.sms_enabled and phone) else False
     db.commit()
 
     bg.add_task(emails.send_welcome, user.email, user.name, verify_url)
@@ -143,16 +148,23 @@ def login(body: LoginIn, request: Request, response: Response, bg: BackgroundTas
 
     user.failed_logins = 0
     user.locked_until = None
-    if user.mfa_enabled and user.phone and settings.sms_enabled:
-        # Password was right; now prove possession of the phone before any session exists.
-        rate_limit(db, f"sms:{user.id}", limit=5, window_seconds=900)
+    methods: list[str] = []
+    if user.totp_enabled and user.totp_secret_enc:
+        methods = ["totp", "email"] + (["backup"] if user.backup_codes else [])
+    elif user.mfa_enabled and user.phone and settings.sms_enabled:
+        methods = ["sms"]
+    if methods:
+        # Password was right; now require a second factor before any session exists.
         ticket = new_token()
         user.mfa_ticket_hash = token_hash(ticket)
-        sent = sms.issue_code(user, "sign-in")
+        user.sms_code_attempts = 0
+        if methods == ["sms"]:
+            rate_limit(db, f"sms:{user.id}", limit=5, window_seconds=900)
+            if not sms.issue_code(user, "sign-in"):
+                db.commit()
+                raise HTTPException(502, "We couldn't text your sign-in code. Please try again in a minute.")
         db.commit()
-        if not sent:
-            raise HTTPException(502, "We couldn't text your sign-in code. Please try again in a minute.")
-        return {"mfa_required": True, "mfa_ticket": ticket, "phone_masked": user.public()["phone_masked"]}
+        return {"mfa_required": True, "mfa_ticket": ticket, "methods": methods, "phone_masked": user.public()["phone_masked"]}
     db.commit()
     _signed_in(db, user, request, bg)
     start_session(db, user, request, response)
@@ -177,16 +189,62 @@ def _user_for_ticket(db: Session, ticket: str) -> User:
 def mfa_verify(body: MfaIn, request: Request, response: Response, bg: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit(db, f"mfa-ip:{client_ip(request)}", limit=20, window_seconds=900)
     user = _user_for_ticket(db, body.ticket)
-    try:
-        sms.check_code(user, body.code)
-    finally:
-        db.commit()  # persist the attempt counter even when the code is wrong
+    used_backup = False
+    method = body.method or ("totp" if user.totp_enabled else "sms")
+    body = body.model_copy(update={"method": method})
+    if body.method in ("email", "sms"):
+        try:
+            sms.check_code(user, body.code)
+        finally:
+            db.commit()  # persist the attempt counter even when the code is wrong
+    else:
+        if user.sms_code_attempts >= sms.MAX_ATTEMPTS:
+            user.mfa_ticket_hash = None
+            db.commit()
+            raise HTTPException(429, "Too many wrong codes. Please sign in again.")
+        ok = False
+        if body.method == "totp" and user.totp_enabled and user.totp_secret_enc:
+            step = totp.verify(decrypt_text(user.totp_secret_enc), body.code, user.totp_last_step)
+            if step is not None:
+                user.totp_last_step = step
+                ok = True
+        elif body.method == "backup" and user.backup_codes:
+            hashes = json.loads(user.backup_codes)
+            h = token_hash(totp.normalize_backup(body.code))
+            if h in hashes:
+                hashes.remove(h)
+                user.backup_codes = json.dumps(hashes)
+                ok = used_backup = True
+        if not ok:
+            user.sms_code_attempts += 1
+            db.commit()
+            raise HTTPException(400, "That code isn't right. Check your authenticator app and try again.")
+        user.sms_code_attempts = 0
     user.mfa_ticket_hash = None
-    user.phone_verified = True
+    if body.method == "sms":
+        user.phone_verified = True
     db.commit()
     _signed_in(db, user, request, bg)
+    if used_backup:
+        record_event(db, user, "backup_code_used", request)
+        bg.add_task(emails.send_security_alert, user.email, user.name, "Backup code used",
+                    f"A backup code was used to sign in to your Zenty account. You have {len(json.loads(user.backup_codes or '[]'))} left.",
+                    device_label(request))
     start_session(db, user, request, response)
     return {"user": user.public()}
+
+
+@router.post("/mfa/email")
+def mfa_email(body: TicketIn, bg: BackgroundTasks, db: Session = Depends(get_db)):
+    """Send a one-time sign-in code by email (backup for the authenticator app)."""
+    user = _user_for_ticket(db, body.ticket)
+    if not user.totp_enabled:
+        raise HTTPException(400, "Email codes aren't available for this account.")
+    rate_limit(db, f"mfa-email:{user.id}", limit=5, window_seconds=900)
+    code = sms.make_code(user)
+    db.commit()
+    bg.add_task(emails.send_login_code, user.email, user.name, code)
+    return {"ok": True}
 
 
 @router.post("/mfa/resend")
