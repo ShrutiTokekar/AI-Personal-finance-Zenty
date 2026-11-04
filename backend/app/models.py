@@ -50,20 +50,47 @@ class User(Base):
     stock_alert_threshold: Mapped[float] = mapped_column(Float, default=3.0)  # percent
 
     # SMS multi-factor authentication
-    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)  # E.164, e.g. +14155550123
+    # Phone numbers are stored encrypted (phone_enc). The old plaintext column is kept
+    # only so existing values can be read and re-saved encrypted.
+    _phone_legacy: Mapped[str | None] = mapped_column("phone", String(20), nullable=True)
+    phone_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     sms_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     sms_code_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sms_code_attempts: Mapped[int] = mapped_column(Integer, default=0)
     mfa_ticket_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    pending_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    _pending_phone_legacy: Mapped[str | None] = mapped_column("pending_phone", String(20), nullable=True)
+    pending_phone_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verify_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # personalisation
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     start_page: Mapped[str] = mapped_column(String(20), default="dashboard")
     budget_alert_pct: Mapped[int] = mapped_column(Integer, default=85)
     savings_target_pct: Mapped[int] = mapped_column(Integer, default=20)
+
+    @property
+    def phone(self) -> str | None:
+        from .security import decrypt_text
+        return decrypt_text(self.phone_enc) if self.phone_enc else self._phone_legacy
+
+    @phone.setter
+    def phone(self, value: str | None) -> None:
+        from .security import encrypt_text
+        self.phone_enc = encrypt_text(value) if value else None
+        self._phone_legacy = None
+
+    @property
+    def pending_phone(self) -> str | None:
+        from .security import decrypt_text
+        return decrypt_text(self.pending_phone_enc) if self.pending_phone_enc else self._pending_phone_legacy
+
+    @pending_phone.setter
+    def pending_phone(self, value: str | None) -> None:
+        from .security import encrypt_text
+        self.pending_phone_enc = encrypt_text(value) if value else None
+        self._pending_phone_legacy = None
 
     def public(self):
         return {
@@ -97,6 +124,7 @@ class AuthSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_agent: Mapped[str] = mapped_column(String(255), default="")
 
     user: Mapped[User] = relationship()
@@ -315,3 +343,18 @@ class Subscription(Base):
             "source": self.source, "merchant_key": self.merchant_key,
             "monthly_cost": round(self.monthly_cost, 2), "cancelled_at": iso(self.cancelled_at),
         }
+
+
+class SecurityEvent(Base):
+    """Account security activity shown to the user (no IP addresses stored)."""
+
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    device: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    def to_dict(self):
+        return {"id": self.id, "kind": self.kind, "device": self.device, "created_at": iso(self.created_at)}

@@ -72,5 +72,8 @@ def cleanup(authorization: str | None = Header(default=None), db: Session = Depe
     now = utcnow()
     s = db.query(AuthSession).filter(AuthSession.expires_at < now).delete()
     r = db.query(RateLimit).filter(RateLimit.window_start < now - timedelta(days=2)).delete()
+    from ..models import SecurityEvent
+    e = db.query(SecurityEvent).filter(SecurityEvent.created_at < now - timedelta(days=180)).delete()
+    idle = db.query(AuthSession).filter(AuthSession.last_seen_at < now - timedelta(minutes=get_settings().session_idle_minutes)).delete()
     db.commit()
-    return {"ok": True, "sessions_removed": s, "rate_limits_removed": r}
+    return {"ok": True, "sessions_removed": s + idle, "rate_limits_removed": r, "security_events_removed": e}

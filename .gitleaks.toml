@@ -1,0 +1,7 @@
+# Secret scanning rules: gitleaks defaults, plus allowances for documented placeholders.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Example config with placeholder values only"
+paths = ['''backend/\.env\.example''']

@@ -56,7 +56,7 @@ function Privacy() {
       </UL>
       <P><strong>Information collected automatically</strong></P>
       <UL>
-        <li><strong>Sign-in and security data:</strong> your browser and device type (from your browser's user-agent) for each signed-in session, and your IP address, which we use briefly to limit repeated sign-in attempts and protect against abuse.</li>
+        <li><strong>Sign-in and security data:</strong> your browser and device type (from your browser's user-agent) for each signed-in session and for a log of security activity (such as sign-ins and password changes) that you can see in Settings, and your IP address, which we use briefly to limit repeated sign-in attempts and protect against abuse. We don't store IP addresses in the security log.</li>
         <li><strong>Service logs:</strong> our hosting provider keeps technical logs (such as request times and errors) to operate and secure the service.</li>
       </UL>
       <P>We don't use advertising or third-party analytics trackers.</P>
@@ -99,16 +99,17 @@ function Privacy() {
       <H2 id="cookies">Cookies and local storage</H2>
       <P>We use only cookies that are strictly necessary for {COMPANY} to work:</P>
       <UL>
-        <li><strong>zenty_session</strong> keeps you signed in. It can't be read by page scripts and expires after 7 days or when you sign out.</li>
+        <li><strong>zenty_session</strong> keeps you signed in. It can't be read by page scripts, and your session ends after 15 minutes without activity, after 12 hours at most, or when you sign out.</li>
         <li><strong>zenty_csrf</strong> protects your account from cross-site request attacks.</li>
       </UL>
-      <P>We also save one preference in your browser's local storage: whether privacy mode (which hides amounts) is on. We don't use advertising or tracking cookies.</P>
+      <P>We also save two small items in your browser's local storage: whether privacy mode (which hides amounts) is on, and the time of your last activity, so all your open Zenty tabs sign out together. We don't use advertising or tracking cookies.</P>
 
       <H2 id="security">How we protect your information</H2>
       <UL>
         <li>All traffic is encrypted with HTTPS.</li>
         <li>Passwords are hashed with Argon2id; bank access keys are encrypted before storage.</li>
-        <li>Sign-in is protected by rate limits, account lockout after repeated failures, and optional text-message codes.</li>
+        <li>Sign-in is protected by rate limits, account lockout after repeated failures, and optional text-message codes. You're signed out automatically after 15 minutes of inactivity, and we email you about new sign-ins and security changes.</li>
+        <li>Phone numbers are encrypted in our database.</li>
         <li>Every record is tied to your account, and our systems check that you own it before showing or changing it.</li>
       </UL>
       <P>No method of transmission or storage is completely secure, but we work hard to protect your information and will notify you if a breach affects you, as required by law.</P>
@@ -117,7 +118,7 @@ function Privacy() {
       <UL>
         <li>We keep your account and financial data for as long as your account is open.</li>
         <li>When you delete your account in Settings, we delete your data from our live systems right away and revoke any bank connections. Copies may remain in encrypted backups for a limited time before they are overwritten.</li>
-        <li>Records used to limit sign-in attempts are removed within about two days. Expired sign-in sessions are cleaned up automatically.</li>
+        <li>Records used to limit sign-in attempts are removed within about two days. Expired sign-in sessions are cleaned up automatically. Security activity records are kept for 180 days.</li>
         <li>We may keep limited information longer if the law requires it.</li>
       </UL>
 

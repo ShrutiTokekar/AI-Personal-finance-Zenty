@@ -21,7 +21,8 @@ function readCookie(name: string): string | null {
 // Attach the CSRF token (double-submit cookie) to every request.
 // Nothing about requests or financial data is logged to the console.
 api.interceptors.request.use((config) => {
-  const csrf = readCookie('zenty_csrf');
+  // Over HTTPS the cookie carries the "__Host-" security prefix.
+  const csrf = readCookie('__Host-zenty_csrf') ?? readCookie('zenty_csrf');
   if (csrf) config.headers.set('X-CSRF-Token', csrf);
   return config;
 });
@@ -30,7 +31,8 @@ api.interceptors.response.use(
   (r) => r,
   (error: AxiosError) => {
     if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/')) {
-      window.dispatchEvent(new Event('zenty:signed-out'));
+      const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
+      window.dispatchEvent(new CustomEvent('zenty:signed-out', { detail }));
     }
     return Promise.reject(error);
   }
@@ -73,7 +75,10 @@ export interface PublicConfig {
   bank_linking: boolean;
   email_enabled?: boolean;
   sms_enabled?: boolean;
+  session_idle_minutes?: number;
 }
+
+export interface SecurityEvent { id: number; kind: string; device: string; created_at: string }
 
 export const authAPI = {
   config: () => api.get<PublicConfig>('/auth/config'),
@@ -103,6 +108,7 @@ export const accountAPI = {
   confirmPhone: (code: string) => api.post<{ user: User }>('/account/phone/confirm', { code }),
   sessions: () => api.get<{ sessions: DeviceSession[] }>('/account/sessions'),
   revokeSession: (id: number) => api.delete(`/account/sessions/${id}`),
+  securityEvents: () => api.get<{ events: SecurityEvent[] }>('/account/security-events'),
   changePassword: (current_password: string | null, new_password: string) =>
     api.post('/account/password', { current_password, new_password }),
   exportData: () => api.get('/account/export'),

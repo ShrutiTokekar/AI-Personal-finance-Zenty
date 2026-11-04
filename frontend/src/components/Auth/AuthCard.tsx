@@ -101,7 +101,7 @@ export default function AuthCard({ config, initialMode = 'login', resetToken, on
         setNotice(r.data.message);
       } else if (step === 'reset' && resetToken) {
         await authAPI.resetPassword(resetToken, password);
-        window.history.replaceState({}, '', '/');
+        window.history.replaceState({}, '', '/signin');
         setPassword('');
         setStep('login');
         setNotice('Password updated. Sign in with your new password.');

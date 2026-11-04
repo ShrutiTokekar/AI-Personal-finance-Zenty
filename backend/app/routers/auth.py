@@ -13,7 +13,9 @@ from ..models import User, utcnow
 from ..security import (
     client_ip,
     current_user,
+    device_label,
     end_all_sessions,
+    record_event,
     end_session,
     hash_password,
     new_token,
@@ -84,7 +86,9 @@ def _norm(email: str) -> str:
 def _issue_verify(user: User) -> str:
     token = new_token()
     user.verify_token_hash = token_hash(token)
-    return f"{settings.app_url}/?verify={token}"
+    user.verify_expires = utcnow() + timedelta(hours=48)
+    # Token goes in the URL fragment (#), which browsers never send to servers or logs.
+    return f"{settings.app_url}/#verify={token}"
 
 
 @router.post("/signup")
@@ -110,12 +114,14 @@ def signup(body: SignupIn, request: Request, response: Response, bg: BackgroundT
     db.commit()
 
     bg.add_task(emails.send_welcome, user.email, user.name, verify_url)
+    record_event(db, user, "signup", request)
+    record_event(db, user, "login", request)
     start_session(db, user, request, response)
     return {"user": user.public(), "phone_verification_required": code_sent}
 
 
 @router.post("/login")
-def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginIn, request: Request, response: Response, bg: BackgroundTasks, db: Session = Depends(get_db)):
     ip = client_ip(request)
     email = _norm(body.email)
     rate_limit(db, f"login-ip:{ip}", limit=20, window_seconds=900)
@@ -127,6 +133,7 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
 
     if not user or not verify_password(body.password, user.password_hash):
         if user:
+            record_event(db, user, "login_failed", request)
             user.failed_logins += 1
             if user.failed_logins >= MAX_FAILED:
                 user.locked_until = utcnow() + timedelta(minutes=LOCK_MINUTES)
@@ -147,8 +154,16 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
             raise HTTPException(502, "We couldn't text your sign-in code. Please try again in a minute.")
         return {"mfa_required": True, "mfa_ticket": ticket, "phone_masked": user.public()["phone_masked"]}
     db.commit()
+    _signed_in(db, user, request, bg)
     start_session(db, user, request, response)
     return {"user": user.public()}
+
+
+def _signed_in(db: Session, user: User, request: Request, bg: BackgroundTasks) -> None:
+    """Log the sign-in and email the owner if it's from a device we haven't seen."""
+    if record_event(db, user, "login", request):
+        bg.add_task(emails.send_security_alert, user.email, user.name, "New sign-in",
+                    "Your Zenty account was just signed in to from a new device.", device_label(request))
 
 
 def _user_for_ticket(db: Session, ticket: str) -> User:
@@ -159,7 +174,7 @@ def _user_for_ticket(db: Session, ticket: str) -> User:
 
 
 @router.post("/mfa/verify")
-def mfa_verify(body: MfaIn, request: Request, response: Response, db: Session = Depends(get_db)):
+def mfa_verify(body: MfaIn, request: Request, response: Response, bg: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit(db, f"mfa-ip:{client_ip(request)}", limit=20, window_seconds=900)
     user = _user_for_ticket(db, body.ticket)
     try:
@@ -169,6 +184,7 @@ def mfa_verify(body: MfaIn, request: Request, response: Response, db: Session = 
     user.mfa_ticket_hash = None
     user.phone_verified = True
     db.commit()
+    _signed_in(db, user, request, bg)
     start_session(db, user, request, response)
     return {"user": user.public()}
 
@@ -245,6 +261,10 @@ def google_login(body: GoogleIn, request: Request, response: Response, bg: Backg
 
     if is_new:
         bg.add_task(emails.send_welcome, user.email, user.name, None)
+        record_event(db, user, "signup", request)
+        record_event(db, user, "login", request)
+    else:
+        _signed_in(db, user, request, bg)
     start_session(db, user, request, response)
     return {"user": user.public(), "new_user": is_new}
 
@@ -256,6 +276,7 @@ def public_config():
         "google_client_id": settings.google_client_id or None,
         "bank_linking": bool(settings.plaid_client_id and settings.plaid_secret),
         "sms_enabled": settings.sms_enabled,
+        "session_idle_minutes": settings.session_idle_minutes,
         "email_enabled": bool(settings.resend_api_key),
     }
 
@@ -268,6 +289,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 @router.post("/logout-everywhere")
 def logout_everywhere(request: Request, response: Response, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    record_event(db, user, "signout_all", request)
     end_all_sessions(db, user.id)
     end_session(db, request, response)
     return {"ok": True}
@@ -281,8 +303,8 @@ def me(user: User = Depends(current_user)):
 @router.post("/verify-email")
 def verify_email(body: TokenIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.verify_token_hash == token_hash(body.token)).first()
-    if not user:
-        raise HTTPException(400, "This verification link is invalid or has expired.")
+    if not user or (user.verify_expires and user.verify_expires < utcnow()):
+        raise HTTPException(400, "This verification link is invalid or has expired. Request a new one from the app.")
     user.email_verified = True
     user.verify_token_hash = None
     db.commit()
@@ -309,13 +331,13 @@ def forgot_password(body: EmailIn, request: Request, bg: BackgroundTasks, db: Se
         user.reset_token_hash = token_hash(token)
         user.reset_expires = utcnow() + timedelta(hours=1)
         db.commit()
-        bg.add_task(emails.send_password_reset, user.email, f"{settings.app_url}/?reset={token}")
+        bg.add_task(emails.send_password_reset, user.email, f"{settings.app_url}/#reset={token}")
     # Same answer whether or not the account exists (prevents email enumeration).
     return {"ok": True, "message": "If that email has an account, a reset link is on its way."}
 
 
 @router.post("/reset-password")
-def reset_password(body: ResetIn, db: Session = Depends(get_db)):
+def reset_password(body: ResetIn, request: Request, bg: BackgroundTasks, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.reset_token_hash == token_hash(body.token)).first()
     if not user or not user.reset_expires or user.reset_expires < utcnow():
         raise HTTPException(400, "This reset link is invalid or has expired.")
@@ -330,4 +352,7 @@ def reset_password(body: ResetIn, db: Session = Depends(get_db)):
     user.email_verified = True  # they proved inbox access
     db.commit()
     end_all_sessions(db, user.id)  # sign out any attacker
+    record_event(db, user, "password_reset", request)
+    bg.add_task(emails.send_security_alert, user.email, user.name, "Password reset",
+                "The password for your Zenty account was just reset, and all devices were signed out.", device_label(request))
     return {"ok": True}

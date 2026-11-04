@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import assistant, insights, stocks
 from ..db import get_db
 from ..models import Budget, SavingsGoal, SavingsTransaction, StockHolding, Transaction, User, utcnow
-from ..security import current_user
+from ..security import current_user, rate_limit
 
 router = APIRouter(prefix="/api", tags=["finance"])
 
@@ -154,6 +154,7 @@ class ChatIn(BaseModel):
 
 @router.post("/chat")
 def chat(body: ChatIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"chat:{user.id}", limit=40, window_seconds=60)
     return assistant.respond(db, user.id, body.message)
 
 
@@ -311,14 +312,16 @@ def portfolio(user: User = Depends(current_user), db: Session = Depends(get_db))
 
 
 @router.get("/stocks/validate/{symbol}")
-def validate_symbol(symbol: str, user: User = Depends(current_user)):
+def validate_symbol(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"quotes:{user.id}", limit=150, window_seconds=600)
     q = stocks.get_quote(symbol)
     sym = stocks.clean_symbol(symbol) or symbol[:12]
     return {"symbol": sym, "valid": q is not None, "message": "Valid symbol" if q else "Invalid or unknown symbol"}
 
 
 @router.get("/stocks/price/{symbol}")
-def stock_price(symbol: str, user: User = Depends(current_user)):
+def stock_price(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"quotes:{user.id}", limit=150, window_seconds=600)
     q = stocks.get_quote(symbol)
     if not q:
         raise HTTPException(404, "Symbol not found or no price data available.")
@@ -326,12 +329,14 @@ def stock_price(symbol: str, user: User = Depends(current_user)):
 
 
 @router.post("/stocks/prices")
-def stock_prices(symbols: list[str], user: User = Depends(current_user)):
+def stock_prices(symbols: list[str], user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"quotes:{user.id}", limit=150, window_seconds=600)
     return {"prices": stocks.get_quotes(symbols)}
 
 
 @router.get("/stocks/history/{symbol}")
-def stock_history(symbol: str, period: str = "1mo", user: User = Depends(current_user)):
+def stock_history(symbol: str, period: str = "1mo", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"quotes:{user.id}", limit=150, window_seconds=600)
     h = stocks.get_history(symbol, period)
     if h is None:
         raise HTTPException(404, "No history available.")
@@ -339,5 +344,6 @@ def stock_history(symbol: str, period: str = "1mo", user: User = Depends(current
 
 
 @router.get("/stocks/search")
-def stock_search(query: str, user: User = Depends(current_user)):
+def stock_search(query: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"quotes:{user.id}", limit=150, window_seconds=600)
     return {"results": stocks.search(query)}
