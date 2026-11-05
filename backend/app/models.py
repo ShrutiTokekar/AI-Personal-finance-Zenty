@@ -64,6 +64,13 @@ class User(Base):
     pending_phone_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     verify_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Authenticator-app two-step sign-in (TOTP). Secrets are encrypted; backup codes are hashed.
+    totp_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    totp_pending_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    backup_codes: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of SHA-256 hashes
+
     # personalisation
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     start_page: Mapped[str] = mapped_column(String(20), default="dashboard")
@@ -102,6 +109,8 @@ class User(Base):
             "phone_masked": ("•••• " + self.phone[-4:]) if self.phone else None,
             "phone_verified": self.phone_verified,
             "mfa_enabled": self.mfa_enabled,
+            "totp_enabled": bool(self.totp_enabled),
+            "backup_codes_left": len(__import__("json").loads(self.backup_codes)) if self.backup_codes else 0,
             "currency": self.currency or "USD",
             "start_page": self.start_page or "dashboard",
             "budget_alert_pct": self.budget_alert_pct or 85,

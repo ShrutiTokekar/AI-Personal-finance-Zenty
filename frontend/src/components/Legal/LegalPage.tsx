@@ -44,7 +44,7 @@ function Privacy() {
       <H2 id="collect">Information we collect</H2>
       <P><strong>Information you give us</strong></P>
       <UL>
-        <li><strong>Account details:</strong> your name, email address, mobile phone number and password. We store passwords only as a one-way Argon2id hash, never in readable form.</li>
+        <li><strong>Account details:</strong> your name, email address, password and, if you choose to add one, a mobile phone number. We store passwords only as a one-way Argon2id hash, never in readable form.</li>
         <li><strong>Financial information you enter:</strong> transactions, budgets, savings goals, stock holdings, subscriptions, and your settings and preferences.</li>
         <li><strong>Messages to the assistant:</strong> what you type into the Zenty Assistant or quick-add bar, which we process to carry out your request (for example, logging an expense).</li>
         <li><strong>Support messages:</strong> anything you send us when you contact us.</li>
@@ -64,7 +64,7 @@ function Privacy() {
       <H2 id="use">How we use your information</H2>
       <UL>
         <li>To provide {COMPANY}: show your dashboard, Zen Score, budgets, goals, subscriptions, insights and the assistant's answers.</li>
-        <li>To keep your account secure: verify your email and phone, send sign-in codes, detect suspicious activity and prevent fraud.</li>
+        <li>To keep your account secure: verify your email, send sign-in codes, detect suspicious activity and prevent fraud.</li>
         <li>To send you service messages: welcome and verification emails, password resets, security codes by text message, and stock alerts if you turn them on.</li>
         <li>To fix problems, maintain and improve the service.</li>
         <li>To comply with the law and enforce our <A href="/terms">Terms of Service</A>.</li>
@@ -78,7 +78,7 @@ function Privacy() {
         <li><strong>Neon</strong> hosts our encrypted database.</li>
         <li><strong>Plaid</strong> connects your bank accounts, if you choose to link them.</li>
         <li><strong>Resend</strong> delivers our emails.</li>
-        <li><strong>Twilio</strong> delivers text-message security codes.</li>
+        <li><strong>Twilio</strong> delivers text-message security codes, only if that feature is switched on.</li>
         <li><strong>Google</strong> provides "Sign in with Google", if you use it.</li>
       </UL>
       <P>To show stock prices, we request market data for the ticker symbols in your portfolio. Those requests contain the symbols only, never your name or account details.</P>
@@ -108,8 +108,8 @@ function Privacy() {
       <UL>
         <li>All traffic is encrypted with HTTPS.</li>
         <li>Passwords are hashed with Argon2id; bank access keys are encrypted before storage.</li>
-        <li>Sign-in is protected by rate limits, account lockout after repeated failures, and optional text-message codes. You're signed out automatically after 15 minutes of inactivity, and we email you about new sign-ins and security changes.</li>
-        <li>Phone numbers are encrypted in our database.</li>
+        <li>Sign-in is protected by rate limits, account lockout after repeated failures, and optional two-step sign-in with an authenticator app (with email codes and one-time backup codes as fallbacks). You're signed out automatically after 15 minutes of inactivity, and we email you about new sign-ins and security changes.</li>
+        <li>Phone numbers and authenticator-app secrets are encrypted in our database; backup codes are stored only as one-way hashes.</li>
         <li>Every record is tied to your account, and our systems check that you own it before showing or changing it.</li>
       </UL>
       <P>No method of transmission or storage is completely secure, but we work hard to protect your information and will notify you if a breach affects you, as required by law.</P>
@@ -175,8 +175,8 @@ function Terms() {
 
       <H2 id="account">Your account</H2>
       <UL>
-        <li>Give us accurate information and keep it up to date, including your email address and mobile number.</li>
-        <li>Keep your password and sign-in codes private, and don't share your account. You're responsible for activity under your account.</li>
+        <li>Give us accurate information and keep it up to date, including your email address and, if provided, your mobile number.</li>
+        <li>Keep your password, sign-in codes and backup codes private, and don't share your account. You're responsible for activity under your account.</li>
         <li>Tell us right away at <A href={`mailto:${SUPPORT}`}>{SUPPORT}</A> if you think someone has accessed your account without permission.</li>
       </UL>
 
@@ -197,8 +197,8 @@ function Terms() {
 
       <H2 id="messages">Emails and text messages</H2>
       <P>
-        By providing your email address and mobile number, you agree that we may send you service messages, including account verification, sign-in
-        codes and security notices, and stock alerts if you turn them on. Text messages are only for verification and sign-in codes. Message
+        By providing your email address (and, if you choose, a mobile number), you agree that we may send you service messages, including account verification, sign-in
+        codes and security notices, and stock alerts if you turn them on. If text messages are used, they are only for verification and sign-in codes. Message
         frequency varies; message and data rates may apply. You can turn off optional emails in Settings. Security messages are needed to use the Service.
       </P>
 

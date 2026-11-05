@@ -495,6 +495,7 @@ def test_db_upgrade_tolerates_concurrent_add(tmp_path, monkeypatch):
 PUBLIC_ROUTES = {
     "/api/health", "/api/auth/config", "/api/auth/signup", "/api/auth/login", "/api/auth/google", "/api/auth/logout",
     "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/mfa/verify", "/api/auth/mfa/resend",
+    "/api/auth/mfa/email",
 }
 
 
@@ -623,3 +624,87 @@ def test_security_headers_on_api():
     r = client().get("/api/health")
     for h in ("X-Frame-Options", "X-Content-Type-Options", "Cross-Origin-Opener-Policy", "Cross-Origin-Resource-Policy", "Referrer-Policy"):
         assert h in r.headers
+
+
+# ---------------------------------------------------------------- free authenticator MFA
+
+def _enable_totp(c):
+    from app import totp
+    r = c.post("/api/account/totp/setup", json={"password": PW})
+    assert r.status_code == 200 and r.json()["otpauth_url"].startswith("otpauth://totp/Zenty:")
+    secret = r.json()["secret"]
+    assert c.post("/api/account/totp/enable", json={"code": "000000" if totp.current_code(secret) != "000000" else "111111"}).status_code == 400
+    r = c.post("/api/account/totp/enable", json={"code": totp.current_code(secret)})
+    assert r.status_code == 200 and len(r.json()["backup_codes"]) == 10
+    return secret, r.json()["backup_codes"]
+
+
+def test_signup_without_phone():
+    r = client().post("/api/auth/signup", json={"name": "No Phone", "email": "nophone@example.com", "password": PW, "confirm_password": PW})
+    assert r.status_code == 200 and r.json()["user"]["phone_masked"] is None
+
+
+def test_totp_setup_requires_password_and_secret_is_encrypted():
+    from sqlalchemy import text
+    from app.db import SessionLocal
+    c = client()
+    signup(c, "totpenc@example.com")
+    assert c.post("/api/account/totp/setup", json={"password": "wrong"}).status_code == 400
+    secret, _ = _enable_totp(c)
+    with SessionLocal() as db:
+        stored = db.execute(text("SELECT totp_secret_enc, backup_codes FROM users WHERE email='totpenc@example.com'")).one()
+    assert secret not in stored[0] and stored[0].startswith("gAAAA")
+    assert "-" not in stored[1].replace('", "', "")  # only hashes stored, never the codes
+
+
+def test_login_requires_authenticator_code(monkeypatch):
+    import time
+    from app import totp
+    c = client()
+    signup(c, "totplogin@example.com")
+    secret, backups = _enable_totp(c)
+    d = client()
+    r = d.post("/api/auth/login", json={"email": "totplogin@example.com", "password": PW}).json()
+    assert r["mfa_required"] and r["methods"] == ["totp", "email", "backup"]
+    assert "zenty_session" not in d.cookies
+    # next 30-second code (the setup code's step can't be reused)
+    code = totp.current_code(secret, time.time() + 30)
+    ok = d.post("/api/auth/mfa/verify", json={"ticket": r["mfa_ticket"], "code": code, "method": "totp"})
+    assert ok.status_code == 200 and d.cookies.get("zenty_session")
+    # the same code can't be replayed
+    e = client()
+    r2 = e.post("/api/auth/login", json={"email": "totplogin@example.com", "password": PW}).json()
+    assert e.post("/api/auth/mfa/verify", json={"ticket": r2["mfa_ticket"], "code": code, "method": "totp"}).status_code == 400
+
+
+def test_backup_code_works_once_and_email_fallback(monkeypatch):
+    from app.routers import auth as auth_router
+    sent = []
+    monkeypatch.setattr(auth_router.emails, "send_login_code", lambda to, name, code: sent.append(code) or True)
+    monkeypatch.setattr(auth_router.emails, "send_security_alert", lambda *a: True)
+    c = client()
+    signup(c, "totpbackup@example.com")
+    _, backups = _enable_totp(c)
+    d = client()
+    t = d.post("/api/auth/login", json={"email": "totpbackup@example.com", "password": PW}).json()["mfa_ticket"]
+    assert d.post("/api/auth/mfa/verify", json={"ticket": t, "code": backups[0].upper().replace("-", " "), "method": "backup"}).status_code == 200
+    e = client()
+    t = e.post("/api/auth/login", json={"email": "totpbackup@example.com", "password": PW}).json()["mfa_ticket"]
+    assert e.post("/api/auth/mfa/verify", json={"ticket": t, "code": backups[0], "method": "backup"}).status_code == 400
+    assert e.post("/api/auth/mfa/email", json={"ticket": t}).status_code == 200 and sent
+    assert e.post("/api/auth/mfa/verify", json={"ticket": t, "code": sent[-1], "method": "email"}).status_code == 200
+
+
+def test_totp_wrong_codes_lock_ticket_and_disable_needs_password():
+    c = client()
+    signup(c, "totplock@example.com")
+    _enable_totp(c)
+    d = client()
+    t = d.post("/api/auth/login", json={"email": "totplock@example.com", "password": PW}).json()["mfa_ticket"]
+    for _ in range(5):
+        d.post("/api/auth/mfa/verify", json={"ticket": t, "code": "123456", "method": "totp"})
+    assert d.post("/api/auth/mfa/verify", json={"ticket": t, "code": "123456", "method": "totp"}).status_code in (400, 429)
+    assert c.post("/api/account/totp/disable", json={"password": "wrong"}).status_code == 400
+    r = c.post("/api/account/totp/disable", json={"password": PW})
+    assert r.json()["user"]["totp_enabled"] is False
+    assert client().post("/api/auth/login", json={"email": "totplock@example.com", "password": PW}).json().get("user")

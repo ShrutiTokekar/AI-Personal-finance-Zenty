@@ -140,3 +140,13 @@ def send_security_alert(to: str, name: str, title: str, detail: str, device: str
 <p>If it wasn't you, reset your password right away and sign out of all devices in Settings → Security.</p>
 {_button(settings.app_url + "/signin", "Review my account")}"""
     return send_email(to, f"Security alert: {title}", _layout(title, body))
+
+
+def send_login_code(to: str, name: str, code: str) -> bool:
+    first = html.escape((name or "there").split(" ")[0])
+    body = f"""
+<p>Hi {first},</p>
+<p>Use this code to finish signing in to Zenty:</p>
+<p style="margin:24px 0;font-size:34px;font-weight:700;letter-spacing:8px;color:{BRAND}">{code}</p>
+<p style="font-size:13px;color:#7a746b">It expires in 10 minutes and works once. If you didn't try to sign in, change your password now. Someone may know it.</p>"""
+    return send_email(to, f"Your Zenty sign-in code: {code}", _layout("Your sign-in code", body))

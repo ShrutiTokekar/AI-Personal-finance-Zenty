@@ -3,7 +3,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import emails, sms
+import json
+
+from .. import emails, sms, totp
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
@@ -21,7 +23,9 @@ from ..models import (
 from ..security import (
     SESSION_COOKIE,
     current_user,
+    decrypt_text,
     device_label,
+    encrypt_text,
     record_event,
     token_hash,
     decrypt,
@@ -62,6 +66,10 @@ class PhoneIn(BaseModel):
 
 class CodeIn(BaseModel):
     code: str = Field(min_length=6, max_length=6)
+
+
+class PasswordOnlyIn(BaseModel):
+    password: str | None = Field(default=None, max_length=128)
 
 
 class PasswordIn(BaseModel):
@@ -121,6 +129,71 @@ def toggle_mfa(body: MfaToggleIn, request: Request, bg: BackgroundTasks, user: U
         bg.add_task(emails.send_security_alert, user.email, user.name, "Two-step sign-in turned off",
                     "Two-step sign-in was just turned off for your Zenty account.", device_label(request))
     return {"user": user.public()}
+
+
+# ---------- authenticator app (free two-step sign-in) ----------
+
+def _fresh_backup_codes(user: User) -> list[str]:
+    codes = totp.new_backup_codes()
+    user.backup_codes = json.dumps([token_hash(c) for c in codes])
+    return codes
+
+
+@router.post("/totp/setup")
+def totp_setup(body: PasswordOnlyIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"totp-setup:{user.id}", limit=10, window_seconds=900)
+    _reauth(user, body.password)
+    secret = totp.new_secret()
+    user.totp_pending_enc = encrypt_text(secret)
+    db.commit()
+    return {"secret": secret, "otpauth_url": totp.provisioning_uri(secret, user.email)}
+
+
+@router.post("/totp/enable")
+def totp_enable(body: CodeIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"totp-enable:{user.id}", limit=10, window_seconds=900)
+    if not user.totp_pending_enc:
+        raise HTTPException(400, "Start setup again from Settings.")
+    secret = decrypt_text(user.totp_pending_enc)
+    step = totp.verify(secret, body.code)
+    if step is None:
+        raise HTTPException(400, "That code isn't right. Make sure your phone's clock is set automatically, then try the newest code.")
+    user.totp_secret_enc = user.totp_pending_enc
+    user.totp_pending_enc = None
+    user.totp_enabled = True
+    user.totp_last_step = step
+    codes = _fresh_backup_codes(user)
+    db.commit()
+    record_event(db, user, "totp_enabled", request)
+    return {"user": user.public(), "backup_codes": codes}
+
+
+@router.post("/totp/disable")
+def totp_disable(body: PasswordOnlyIn, request: Request, bg: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"totp-disable:{user.id}", limit=10, window_seconds=900)
+    _reauth(user, body.password)
+    user.totp_enabled = False
+    user.totp_secret_enc = None
+    user.totp_pending_enc = None
+    user.totp_last_step = None
+    user.backup_codes = None
+    db.commit()
+    record_event(db, user, "totp_disabled", request)
+    bg.add_task(emails.send_security_alert, user.email, user.name, "Two-step sign-in turned off",
+                "Authenticator-app sign-in was just turned off for your Zenty account.", device_label(request))
+    return {"user": user.public()}
+
+
+@router.post("/backup-codes")
+def regenerate_backup_codes(body: PasswordOnlyIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rate_limit(db, f"backup-codes:{user.id}", limit=5, window_seconds=3600)
+    _reauth(user, body.password)
+    if not user.totp_enabled:
+        raise HTTPException(400, "Turn on authenticator sign-in first.")
+    codes = _fresh_backup_codes(user)
+    db.commit()
+    record_event(db, user, "backup_codes_regenerated", request)
+    return {"user": user.public(), "backup_codes": codes}
 
 
 @router.post("/phone")

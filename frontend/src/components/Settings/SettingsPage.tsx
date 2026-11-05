@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { accountAPI, authAPI, errorMessage, type DeviceSession, type SecurityEvent, type User } from '../../services/api';
 import { PageHeader } from '../ui';
+import AuthenticatorCard from './AuthenticatorCard';
 
 interface Props {
   user: User;
@@ -322,7 +323,7 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
                 <div className="flex items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100"><Phone className="h-5 w-5 text-gray-600" /></span>
                   <div>
-                    <p className="font-medium text-ink">Phone number</p>
+                    <p className="font-medium text-ink">Phone number <span className="font-normal text-gray-400">(optional)</span></p>
                     <p className="text-sm text-gray-500">
                       {user.phone_masked || 'No phone on file'}
                       {user.phone_masked && (user.phone_verified ? <span className="ml-2 text-primary-700">✓ Verified</span> : <span className="ml-2 text-saffron-700">Not verified</span>)}
@@ -352,14 +353,18 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
               <StatusLine s={phoneStatus} />
             </div>
 
-            {/* Two-step */}
+            {/* Two-step: free authenticator app */}
+            <AuthenticatorCard user={user} onUserChange={onUserChange} />
+
+            {/* Legacy texted codes: only shown so accounts that have them on can turn them off */}
+            {user.mfa_enabled && (
             <div className="mt-4 rounded-2xl border border-line p-4">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100"><Smartphone className="h-5 w-5 text-gray-600" /></span>
                   <div>
-                    <p className="font-medium text-ink">Two-step sign-in</p>
-                    <p className="text-sm text-gray-500">Ask for a texted code every time you sign in with your password.</p>
+                    <p className="font-medium text-ink">Texted sign-in codes</p>
+                    <p className="text-sm text-gray-500">Ask for a code by text message when you sign in.</p>
                   </div>
                 </div>
                 <Toggle checked={!!user.mfa_enabled} onChange={toggleMfa} label="Two-step sign-in" disabled={busy === 'mfa'} />
@@ -370,6 +375,7 @@ export default function SettingsPage({ user, onUserChange, onSignedOut }: Props)
               )}
               <StatusLine s={mfaStatus} />
             </div>
+            )}
 
             {/* Password */}
             <div className="mt-4 rounded-2xl border border-line p-4">

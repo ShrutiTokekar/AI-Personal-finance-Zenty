@@ -14,12 +14,12 @@ type Msg = { id: number; from: 'you' | 'zenty'; text: string; ctas?: Cta[] };
 const ANSWERS: { test: RegExp; text: string; ctas?: Cta[] }[] = [
   {
     test: /sign ?up|create (an )?account|register|join|get started|start free|how (do i|to) (start|begin)/,
-    text: 'Signing up takes about 30 seconds:\n1. Tap "Get started".\n2. Enter your name, email and mobile number, then choose a password.\n3. Confirm your phone with the 6-digit code we text you.\n4. Open the welcome email and tap "Verify my email".\nYou can also continue with Google.',
+    text: 'Signing up takes about 30 seconds:\n1. Tap "Get started".\n2. Enter your name and email, choose a password and confirm it (a mobile number is optional).\n3. Open the welcome email and tap "Verify my email".\n4. For extra security, turn on two-step sign-in with a free authenticator app in Settings.\nYou can also continue with Google.',
     ctas: ['signup'],
   },
   {
     test: /sign ?in|log ?in|login|log on|forgot|password|reset/,
-    text: 'Tap "Sign in", then enter your email and password. If two-step security is on, enter the code we text you. Forgot your password? Choose "Forgot password?" on the sign-in screen and we\'ll email you a reset link.',
+    text: 'Tap "Sign in", then enter your email and password. If two-step sign-in is on, enter the 6-digit code from your authenticator app (or get one by email). Forgot your password? Choose "Forgot password?" on the sign-in screen and we\'ll email you a reset link.',
     ctas: ['signin'],
   },
   {
@@ -28,7 +28,7 @@ const ANSWERS: { test: RegExp; text: string; ctas?: Cta[] }[] = [
   },
   {
     test: /secur|safe|privacy|private|encrypt|hack|data|bank login|plaid/,
-    text: 'Security is built in: bank logins happen inside Plaid\'s secure window (Zenty never sees them), bank access keys are encrypted on our servers, passwords are protected with Argon2id, sign-in can require a texted code, and only you can see your data. You can export or delete everything any time.',
+    text: 'Security is built in: bank logins happen inside Plaid\'s secure window (Zenty never sees them), bank access keys are encrypted on our servers, passwords are protected with Argon2id, sign-in can require a code from a free authenticator app, and only you can see your data. You can export or delete everything any time.',
   },
   {
     test: /price|cost|free|pay|subscription plan|premium/,

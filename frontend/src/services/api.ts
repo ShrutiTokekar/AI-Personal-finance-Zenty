@@ -60,6 +60,8 @@ export interface User {
   phone_masked?: string | null;
   phone_verified?: boolean;
   mfa_enabled?: boolean;
+  totp_enabled?: boolean;
+  backup_codes_left?: number;
   currency?: string;
   start_page?: string;
   budget_alert_pct?: number;
@@ -68,7 +70,8 @@ export interface User {
 
 export interface DeviceSession { id: number; created_at: string; expires_at: string; device: string; current: boolean }
 
-export type LoginResult = { user: User } | { mfa_required: true; mfa_ticket: string; phone_masked: string | null };
+export type MfaMethod = 'totp' | 'email' | 'backup' | 'sms';
+export type LoginResult = { user: User } | { mfa_required: true; mfa_ticket: string; methods: MfaMethod[]; phone_masked: string | null };
 
 export interface PublicConfig {
   google_client_id: string | null;
@@ -84,9 +87,10 @@ export const authAPI = {
   config: () => api.get<PublicConfig>('/auth/config'),
   me: () => api.get<{ user: User }>('/auth/me'),
   signup: (name: string, email: string, password: string, confirm_password: string, phone: string) =>
-    api.post<{ user: User; phone_verification_required: boolean }>('/auth/signup', { name, email, password, confirm_password, phone }),
+    api.post<{ user: User; phone_verification_required: boolean }>('/auth/signup', { name, email, password, confirm_password, phone: phone.trim() || null }),
   login: (email: string, password: string) => api.post<LoginResult>('/auth/login', { email, password }),
-  mfaVerify: (ticket: string, code: string) => api.post<{ user: User }>('/auth/mfa/verify', { ticket, code }),
+  mfaVerify: (ticket: string, code: string, method?: MfaMethod) => api.post<{ user: User }>('/auth/mfa/verify', { ticket, code, method }),
+  mfaEmail: (ticket: string) => api.post('/auth/mfa/email', { ticket }),
   mfaResend: (ticket: string) => api.post('/auth/mfa/resend', { ticket }),
   phoneVerify: (code: string) => api.post<{ user: User }>('/auth/phone/verify', { code }),
   phoneResend: () => api.post('/auth/phone/resend'),
@@ -109,6 +113,10 @@ export const accountAPI = {
   sessions: () => api.get<{ sessions: DeviceSession[] }>('/account/sessions'),
   revokeSession: (id: number) => api.delete(`/account/sessions/${id}`),
   securityEvents: () => api.get<{ events: SecurityEvent[] }>('/account/security-events'),
+  totpSetup: (password: string | null) => api.post<{ secret: string; otpauth_url: string }>('/account/totp/setup', { password }),
+  totpEnable: (code: string) => api.post<{ user: User; backup_codes: string[] }>('/account/totp/enable', { code }),
+  totpDisable: (password: string | null) => api.post<{ user: User }>('/account/totp/disable', { password }),
+  newBackupCodes: (password: string | null) => api.post<{ user: User; backup_codes: string[] }>('/account/backup-codes', { password }),
   changePassword: (current_password: string | null, new_password: string) =>
     api.post('/account/password', { current_password, new_password }),
   exportData: () => api.get('/account/export'),
